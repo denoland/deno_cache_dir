@@ -40,7 +40,10 @@ Deno.test({
     }
 
     for (const [fixture, expected] of testCases) {
-      assertEquals(DiskCache.getCacheFilename(new URL(fixture)), expected);
+      assertEquals(
+        DiskCache.getCacheFilename(new URL(fixture)),
+        Deno.build.os === "windows" ? expected.replace(/\//g, "\\") : expected,
+      );
     }
   },
 });
