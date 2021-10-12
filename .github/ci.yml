@@ -1,0 +1,41 @@
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  deno:
+    name: deno_cache-${{ matrix.os }}
+    if: |
+      github.event_name == 'push' ||
+      !startsWith(github.event.pull_request.head.label, 'denoland:')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        os: [macOS-latest, ubuntu-latest, windows-2019]
+
+    env:
+      GH_ACTIONS: 1
+
+    steps:
+      - name: ☑️ clone repository
+        uses: actions/checkout@v2
+
+      - name: ➡️  install Deno
+        uses: denoland/setup-deno@v1.0.0
+        with:
+          deno-version: 1.x
+
+      - name: 💄  format
+        if: contains(matrix.os, 'ubuntu')
+        run: |
+          deno fmt --check *.ts *.md .github
+
+      - name: 💄  lint
+        if: contains(matrix.os, 'ubuntu')
+        run: |
+          deno lint *.ts
+
+      - name: 🧪  test
+        run: |
+          deno test --allow-read --allow-write --allow-net --allow-env
