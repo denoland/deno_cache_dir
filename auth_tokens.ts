@@ -36,7 +36,7 @@ export class AuthTokens {
   #tokens: AuthToken[];
   constructor(tokensStr = "") {
     const tokens: AuthToken[] = [];
-    for (const tokenStr of tokensStr.split(";")) {
+    for (const tokenStr of tokensStr.split(";").filter((s) => s.length > 0)) {
       if (tokensStr.includes("@")) {
         const [host, token] = splitLast(tokenStr, "@");
         if (token.includes(":")) {
