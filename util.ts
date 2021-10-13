@@ -59,3 +59,15 @@ export function urlToFilename(url: URL) {
   const hashedFilename = hash(restStr);
   return join(cacheFilename, hashedFilename);
 }
+
+export function isFileSync(filePath: string): boolean {
+  try {
+    const stats = Deno.lstatSync(filePath);
+    return stats.isFile;
+  } catch (err) {
+    if (err instanceof Deno.errors.NotFound) {
+      return false;
+    }
+    throw err;
+  }
+}

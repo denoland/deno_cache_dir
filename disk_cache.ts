@@ -67,7 +67,7 @@ export class DiskCache {
           out.push("UNC");
           out.push(host.replaceAll(":", "_"));
         }
-        const pathComponents = path.split(sep).filter(p => p.length > 0);
+        const pathComponents = path.split(sep).filter((p) => p.length > 0);
         if (Deno.build.os === "windows") {
           if (host) {
             // windows will have the host in the result of fromFileUrl, so remove it

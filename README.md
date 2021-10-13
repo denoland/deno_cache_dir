@@ -32,21 +32,19 @@ This can just be granted on startup to avoid being prompted for them.
 Using the cache and the file fetcher to provide modules to build a module graph:
 
 ```ts
-import { DenoDir, FileFetcher } from "https://deno.land/x/deno_cache/mod.ts";
+import { createCache } from "https://deno.land/x/deno_cache/mod.ts";
 import { createGraph } from "https://deno.land/x/deno_graph/mod.ts";
 
-// creates a instance which provides access to the environmentally derived
-// cache.
-const denoDir = new DenoDir();
-// creates an instance which provides the ability to fetch modules leveraging
-// the local cache
-const fileFetcher = new FileFetcher(denoDir.deps);
-// create a module graph of the module and all of the dependencies,
+// create a cache where the location will be determined environmentally
+const cache = createCache();
+// destructuring the two functions we need to pass to the graph
+const { cacheInfo, load } = cache;
+// create a graph that will use the cache above to load and cache dependencies
 const graph = await createGraph("https://deno.land/x/oak@v9.0.1/mod.ts", {
-  load(specifier) {
-    return fileFetcher.fetch(new URL(specifier));
-  },
+  cacheInfo,
+  load,
 });
+
 // log out the console a similar output to `deno info` on the command line.
 console.log(graph.toString());
 ```

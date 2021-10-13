@@ -5,6 +5,19 @@ import { colors, fromFileUrl, readAll } from "./deps.ts";
 import type { LoadResponse } from "./deps.ts";
 import type { HttpCache } from "./http_cache.ts";
 
+/** A setting that determines how the cache is handled for remote dependencies.
+ *
+ * The default is `"use"`.
+ *
+ * - `"only"` - only the cache will be re-used, and any remote modules not in
+ *    the cache will error.
+ * - `"use"` - the cache will be used, meaning existing remote files will not be
+ *    reloaded.
+ * - `"reloadAll"` - any cached modules will be ignored and their values will be
+ *    fetched.
+ * - `string[]` - an array of string specifiers, that if they match the start of
+ *    the requested specifier, will be reloaded.
+ */
 export type CacheSetting = "only" | "reloadAll" | "use" | string[];
 
 await Deno.permissions.request({ name: "env", variable: "DENO_AUTH_TOKENS" });
@@ -55,19 +68,23 @@ export function stripHashbang(value: string): string {
   return value.startsWith("#!") ? value.slice(value.indexOf("\n")) : value;
 }
 
-async function fetchLocal(specifier: URL): Promise<LoadResponse> {
+async function fetchLocal(specifier: URL): Promise<LoadResponse | undefined> {
   const local = fromFileUrl(specifier);
   if (!local) {
     throw new TypeError(
       `Invalid file path.\n  Specifier: ${specifier.toString()}`,
     );
   }
-  const source = await Deno.readTextFile(local);
-  const content = stripHashbang(source);
-  return {
-    content,
-    specifier: specifier.toString(),
-  };
+  try {
+    const source = await Deno.readTextFile(local);
+    const content = stripHashbang(source);
+    return {
+      content,
+      specifier: specifier.toString(),
+    };
+  } catch {
+    // ignoring errors, we will just return undefined
+  }
 }
 
 const decoder = new TextDecoder();
@@ -148,7 +165,7 @@ export class FileFetcher {
   async #fetchRemote(
     specifier: URL,
     redirectLimit: number,
-  ): Promise<LoadResponse> {
+  ): Promise<LoadResponse | undefined> {
     if (redirectLimit < 0) {
       throw new Deno.errors.Http("Too many redirects.");
     }
@@ -182,7 +199,11 @@ export class FileFetcher {
     console.log(`${colors.green("Download")} ${specifier.toString()}`);
     const response = await fetch(specifier, { headers: requestHeaders });
     if (!response.ok) {
-      throw new Deno.errors.Http(`${response.status} ${response.statusText}`);
+      if (response.status === 404) {
+        return undefined;
+      } else {
+        throw new Deno.errors.Http(`${response.status} ${response.statusText}`);
+      }
     }
     // WHATWG fetch follows redirects automatically, so we will try to
     // determine if that ocurred and cache the value.
@@ -204,7 +225,7 @@ export class FileFetcher {
     };
   }
 
-  fetch(specifier: URL): Promise<LoadResponse> {
+  fetch(specifier: URL): Promise<LoadResponse | undefined> {
     const scheme = getValidatedScheme(specifier);
     const response = this.#cache.get(specifier.toString());
     if (response) {
@@ -225,9 +246,11 @@ export class FileFetcher {
       );
     } else {
       const result = this.#fetchRemote(specifier, 10);
-      result.then((response) =>
-        this.#cache.set(specifier.toString(), response)
-      );
+      result.then((response) => {
+        if (response) {
+          this.#cache.set(specifier.toString(), response);
+        }
+      });
       return result;
     }
   }

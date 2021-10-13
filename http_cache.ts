@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 import { dirname, ensureDirSync, extname, isAbsolute, join } from "./deps.ts";
-import { assert, CACHE_PERM, urlToFilename } from "./util.ts";
+import { assert, CACHE_PERM, isFileSync, urlToFilename } from "./util.ts";
 
 class Metadata {
   headers: Record<string, string>;
@@ -51,13 +51,7 @@ export class HttpCache {
   get(url: URL): [Deno.File, Record<string, string>] | undefined {
     const cacheFilename = join(this.location, urlToFilename(url));
     const metadataFilename = Metadata.filename(cacheFilename);
-    let stat;
-    try {
-      stat = Deno.statSync(cacheFilename);
-    } catch {
-      return undefined;
-    }
-    if (!stat.isFile) {
+    if (!isFileSync(cacheFilename)) {
       return undefined;
     }
     const file = Deno.openSync(cacheFilename, { read: true });

@@ -1,9 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-import { HttpCache } from "./http_cache.ts";
-import { DiskCache } from "./disk_cache.ts";
 import { isAbsolute, join, normalize } from "./deps.ts";
+import { DiskCache } from "./disk_cache.ts";
 import { cacheDir, homeDir } from "./dirs.ts";
+import { HttpCache } from "./http_cache.ts";
 import { assert } from "./util.ts";
 
 await Deno.permissions.request({ name: "env", variable: "DENO_DIR" });
