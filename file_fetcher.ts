@@ -123,7 +123,7 @@ export class FileFetcher {
     const content = await response.text();
     const headers: Record<string, string> = {};
     for (const [key, value] of response.headers) {
-      headers[key.toLowerCase(), value];
+      headers[key.toLowerCase()] = value;
     }
     this.#httpCache.set(specifier, headers, content);
     return {
@@ -215,7 +215,7 @@ export class FileFetcher {
     const content = await response.text();
     const headers: Record<string, string> = {};
     for (const [key, value] of response.headers) {
-      headers[key.toLowerCase(), value];
+      headers[key.toLowerCase()] = value;
     }
     this.#httpCache.set(url, headers, content);
     return {
