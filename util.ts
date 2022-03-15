@@ -51,12 +51,7 @@ function baseUrlToFilename(url: URL): string {
 
 export function urlToFilename(url: URL) {
   const cacheFilename = baseUrlToFilename(url);
-  let restStr = url.pathname;
-  const query = url.search;
-  if (query) {
-    restStr += `?${query}`;
-  }
-  const hashedFilename = hash(restStr);
+  const hashedFilename = hash(url.pathname + url.search);
   return join(cacheFilename, hashedFilename);
 }
 
