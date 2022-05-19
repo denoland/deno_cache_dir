@@ -6,9 +6,6 @@ import { cacheDir, homeDir } from "./dirs.ts";
 import { HttpCache } from "./http_cache.ts";
 import { assert } from "./util.ts";
 
-await Deno.permissions.request({ name: "env", variable: "DENO_DIR" });
-await Deno.permissions.request({ name: "read" });
-
 export class DenoDir {
   deps: HttpCache;
   gen: DiskCache;
@@ -20,6 +17,7 @@ export class DenoDir {
         root = normalize(join(Deno.cwd(), root));
       }
     } else {
+      Deno.permissions.request({ name: "env", variable: "DENO_DIR" });
       const dd = Deno.env.get("DENO_DIR");
       if (dd) {
         if (!isAbsolute(dd)) {
@@ -41,6 +39,7 @@ export class DenoDir {
     }
     assert(root, "Could not set the Deno root directory");
     assert(isAbsolute(root), `The root directory "${root}" is not absolute.`);
+    Deno.permissions.request({ name: "read" });
     Deno.permissions.request({ name: "write", path: root });
     this.root = root;
     this.deps = new HttpCache(join(root, "deps"));

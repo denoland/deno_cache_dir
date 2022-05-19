@@ -2,16 +2,6 @@
 
 import { join } from "./deps.ts";
 
-if (Deno.build.os === "darwin" || Deno.build.os === "linux") {
-  await Deno.permissions.request({ name: "env", variable: "HOME" });
-  if (Deno.build.os === "linux") {
-    await Deno.permissions.request({ name: "env", variable: "XDG_CACHE_HOME" });
-  }
-} else {
-  await Deno.permissions.request({ name: "env", variable: "USERPROFILE" });
-  await Deno.permissions.request({ name: "env", variable: "LOCALAPPDATA" });
-}
-
 export function cacheDir(): string | undefined {
   if (Deno.build.os === "darwin") {
     const home = homeDir();
@@ -19,6 +9,7 @@ export function cacheDir(): string | undefined {
       return join(home, "Library/Caches");
     }
   } else if (Deno.build.os === "linux") {
+    Deno.permissions.request({ name: "env", variable: "XDG_CACHE_HOME" });
     const cacheHome = Deno.env.get("XDG_CACHE_HOME");
     if (cacheHome) {
       return cacheHome;
@@ -29,6 +20,7 @@ export function cacheDir(): string | undefined {
       }
     }
   } else {
+    Deno.permissions.request({ name: "env", variable: "LOCALAPPDATA" });
     return Deno.env.get("LOCALAPPDATA");
   }
 }
@@ -36,9 +28,11 @@ export function cacheDir(): string | undefined {
 export function homeDir(): string | undefined {
   switch (Deno.build.os) {
     case "windows":
+      Deno.permissions.request({ name: "env", variable: "USERPROFILE" });
       return Deno.env.get("USERPROFILE");
     case "linux":
     case "darwin":
+      Deno.permissions.request({ name: "env", variable: "HOME" });
       return Deno.env.get("HOME");
     default:
       throw Error("unreachable");
