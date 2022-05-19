@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-import { dirname, ensureDirSync, extname, isAbsolute, join } from "./deps.ts";
+import { dirname, ensureDir, extname, isAbsolute, join } from "./deps.ts";
 import { assert, CACHE_PERM, isFile, urlToFilename } from "./util.ts";
 
 class Metadata {
@@ -77,7 +77,7 @@ export class HttpCache {
     }
     const cacheFilename = join(this.location, urlToFilename(url));
     const parentFilename = dirname(cacheFilename);
-    ensureDirSync(parentFilename);
+    await ensureDir(parentFilename);
     await Deno.writeTextFile(cacheFilename, content, { mode: CACHE_PERM });
     const metadata = new Metadata(headers, url);
     metadata.write(cacheFilename);

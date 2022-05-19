@@ -2,7 +2,7 @@
 
 // std library dependencies
 
-export { ensureDirSync } from "https://deno.land/std@0.140.0/fs/ensure_dir.ts";
+export { ensureDir } from "https://deno.land/std@0.140.0/fs/ensure_dir.ts";
 export * as colors from "https://deno.land/std@0.140.0/fmt/colors.ts";
 export { Sha256 } from "https://deno.land/std@0.140.0/hash/sha256.ts";
 export {
@@ -16,8 +16,7 @@ export {
 } from "https://deno.land/std@0.140.0/path/mod.ts";
 export {
   readAll,
-  readAllSync,
-  writeAllSync,
+  writeAll,
 } from "https://deno.land/std@0.140.0/streams/conversion.ts";
 
 // type only dependencies of `deno_graph`

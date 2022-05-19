@@ -2,13 +2,13 @@
 
 import {
   dirname,
-  ensureDirSync,
+  ensureDir,
   fromFileUrl,
   isAbsolute,
   join,
-  readAllSync,
+  readAll,
   sep,
-  writeAllSync,
+  writeAll,
 } from "./deps.ts";
 import { assert, CACHE_PERM, urlToFilename } from "./util.ts";
 
@@ -20,24 +20,24 @@ export class DiskCache {
     this.location = location;
   }
 
-  get(filename: string): Uint8Array {
+  async get(filename: string): Promise<Uint8Array> {
     const path = join(this.location, filename);
-    const file = Deno.openSync(path, { read: true });
-    const value = readAllSync(file);
+    const file = await Deno.open(path, { read: true });
+    const value = await readAll(file);
     file.close();
     return value;
   }
 
-  set(filename: string, data: Uint8Array): void {
+  async set(filename: string, data: Uint8Array): Promise<void> {
     const path = join(this.location, filename);
     const parentFilename = dirname(path);
-    ensureDirSync(parentFilename);
-    const file = Deno.openSync(path, {
+    await ensureDir(parentFilename);
+    const file = await Deno.open(path, {
       write: true,
       create: true,
       mode: CACHE_PERM,
     });
-    writeAllSync(file, data);
+    await writeAll(file, data);
   }
 
   static getCacheFilename(url: URL): string | undefined {
