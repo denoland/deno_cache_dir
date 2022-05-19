@@ -9,7 +9,7 @@ Deno.test({
   async fn() {
     const denoDir = new DenoDir();
     const fileFetcher = new FileFetcher(denoDir.deps);
-    const graph = await createGraph("https://deno.land/x/oak@v9.0.1/mod.ts", {
+    const graph = await createGraph("https://deno.land/x/oak@v10.5.1/mod.ts", {
       load(specifier) {
         return fileFetcher.fetch(new URL(specifier));
       },

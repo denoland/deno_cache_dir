@@ -119,13 +119,13 @@ export class FileFetcher {
       );
     }
 
-    const response = await fetch(specifier);
+    const response = await fetch(specifier.toString());
     const content = await response.text();
     const headers: Record<string, string> = {};
     for (const [key, value] of response.headers) {
       headers[key.toLowerCase()] = value;
     }
-    this.#httpCache.set(specifier, headers, content);
+    await this.#httpCache.set(specifier, headers, content);
     return {
       kind: "module",
       specifier: specifier.toString(),
@@ -199,7 +199,9 @@ export class FileFetcher {
       requestHeaders.append("authorization", authToken);
     }
     console.log(`${colors.green("Download")} ${specifier.toString()}`);
-    const response = await fetch(specifier, { headers: requestHeaders });
+    const response = await fetch(specifier.toString(), {
+      headers: requestHeaders,
+    });
     if (!response.ok) {
       if (response.status === 404) {
         return undefined;
@@ -211,7 +213,7 @@ export class FileFetcher {
     // determine if that ocurred and cache the value.
     if (specifier.toString() !== response.url) {
       const headers = { "location": response.url };
-      this.#httpCache.set(specifier, headers, "");
+      await this.#httpCache.set(specifier, headers, "");
     }
     const url = new URL(response.url);
     const content = await response.text();
@@ -219,7 +221,7 @@ export class FileFetcher {
     for (const [key, value] of response.headers) {
       headers[key.toLowerCase()] = value;
     }
-    this.#httpCache.set(url, headers, content);
+    await this.#httpCache.set(url, headers, content);
     return {
       kind: "module",
       specifier: response.url,
@@ -228,33 +230,27 @@ export class FileFetcher {
     };
   }
 
-  fetch(specifier: URL): Promise<LoadResponse | undefined> {
+  async fetch(specifier: URL): Promise<LoadResponse | undefined> {
     const scheme = getValidatedScheme(specifier);
     const response = this.#cache.get(specifier.toString());
     if (response) {
-      return Promise.resolve(response);
+      return response;
     } else if (scheme === "file:") {
       return fetchLocal(specifier);
     } else if (scheme === "data:" || scheme === "blob:") {
-      const result = this.#fetchBlobDataUrl(specifier);
-      result.then((response) =>
-        this.#cache.set(specifier.toString(), response)
-      );
-      return result;
+      const response = await this.#fetchBlobDataUrl(specifier);
+      this.#cache.set(specifier.toString(), response);
+      return response;
     } else if (!this.#allowRemote) {
-      return Promise.reject(
-        new Deno.errors.PermissionDenied(
-          `A remote specifier was requested: "${specifier.toString()}", but --no-remote is specifier`,
-        ),
+      throw new Deno.errors.PermissionDenied(
+        `A remote specifier was requested: "${specifier.toString()}", but --no-remote is specifier`,
       );
     } else {
-      const result = this.#fetchRemote(specifier, 10);
-      result.then((response) => {
-        if (response) {
-          this.#cache.set(specifier.toString(), response);
-        }
-      });
-      return result;
+      const response = await this.#fetchRemote(specifier, 10);
+      if (response) {
+        this.#cache.set(specifier.toString(), response);
+      }
+      return response;
     }
   }
 }

@@ -38,17 +38,17 @@ export class FetchCacher {
     if (!filename || !(await isFile(filename))) {
       return undefined;
     }
-    const bytes = this.#diskCache.get(filename);
+    const bytes = await this.#diskCache.get(filename);
     return JSON.parse(decoder.decode(bytes));
   }
 
-  #setEmitMetadata(specifier: URL, data: EmitMetadata): void {
+  async #setEmitMetadata(specifier: URL, data: EmitMetadata): Promise<void> {
     const filename = DiskCache.getCacheFilenameWithExtension(specifier, "meta");
     if (!filename) {
       return;
     }
     const bytes = encoder.encode(JSON.stringify(data));
-    this.#diskCache.set(filename, bytes);
+    await this.#diskCache.set(filename, bytes);
   }
 
   constructor(
@@ -110,7 +110,7 @@ export class FetchCacher {
     }
     const filename = DiskCache.getCacheFilenameWithExtension(url, extension);
     if (filename) {
-      const data = this.#diskCache.get(filename);
+      const data = await this.#diskCache.get(filename);
       return decoder.decode(data);
     }
   }
@@ -150,7 +150,7 @@ export class FetchCacher {
     }
     const filename = DiskCache.getCacheFilenameWithExtension(url, extension);
     if (filename) {
-      this.#diskCache.set(filename, encoder.encode(value));
+      await this.#diskCache.set(filename, encoder.encode(value));
     }
   }
 }
