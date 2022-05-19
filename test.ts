@@ -8,7 +8,7 @@ Deno.test({
   async fn() {
     const cache = createCache();
     const { cacheInfo, load } = cache;
-    const graph = await createGraph("https://deno.land/x/oak@v9.0.1/mod.ts", {
+    const graph = await createGraph("https://deno.land/x/oak@v10.5.1/mod.ts", {
       cacheInfo,
       load,
     });

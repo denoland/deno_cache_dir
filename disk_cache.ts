@@ -38,6 +38,7 @@ export class DiskCache {
       mode: CACHE_PERM,
     });
     await writeAll(file, data);
+    file.close();
   }
 
   static getCacheFilename(url: URL): string | undefined {

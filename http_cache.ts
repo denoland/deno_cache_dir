@@ -80,6 +80,6 @@ export class HttpCache {
     await ensureDir(parentFilename);
     await Deno.writeTextFile(cacheFilename, content, { mode: CACHE_PERM });
     const metadata = new Metadata(headers, url);
-    metadata.write(cacheFilename);
+    await metadata.write(cacheFilename);
   }
 }
