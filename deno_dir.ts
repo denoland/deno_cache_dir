@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 import { isAbsolute, join, normalize } from "./deps.ts";
 import { DiskCache } from "./disk_cache.ts";

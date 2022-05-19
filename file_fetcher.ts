@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 import { AuthTokens } from "./auth_tokens.ts";
 import { colors, fromFileUrl, readAll } from "./deps.ts";
