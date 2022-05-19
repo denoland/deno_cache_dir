@@ -5,7 +5,7 @@ import type { CacheInfo, LoadResponse } from "./deps.ts";
 import { DiskCache } from "./disk_cache.ts";
 import type { FileFetcher } from "./file_fetcher.ts";
 import type { HttpCache } from "./http_cache.ts";
-import { isFileSync } from "./util.ts";
+import { isFile, isFileSync } from "./util.ts";
 
 /** The type of cache information that should be set or retrieved from the
  * cache. */
@@ -24,14 +24,18 @@ interface EmitMetadata {
   version_hash: string;
 }
 
+/** Provides an interface to Deno's CLI cache.
+ *
+ * It is better to use the {@linkcode createCache} function directly. */
 export class FetchCacher {
   #diskCache: DiskCache;
   #fileFetcher: FileFetcher;
   #httpCache: HttpCache;
+  #readOnly: boolean;
 
-  #getEmitMetadata(specifier: URL): EmitMetadata | undefined {
+  async #getEmitMetadata(specifier: URL): Promise<EmitMetadata | undefined> {
     const filename = DiskCache.getCacheFilenameWithExtension(specifier, "meta");
-    if (!filename || !isFileSync(filename)) {
+    if (!filename || !(await isFile(filename))) {
       return undefined;
     }
     const bytes = this.#diskCache.get(filename);
@@ -51,13 +55,23 @@ export class FetchCacher {
     diskCache: DiskCache,
     httpCache: HttpCache,
     fileFetcher: FileFetcher,
+    readOnly: boolean,
   ) {
     this.#diskCache = diskCache;
     this.#fileFetcher = fileFetcher;
     this.#httpCache = httpCache;
+    this.#readOnly = readOnly;
   }
 
+  /** Provides information about the state of the cache, which is used by
+   * things like [`deno_graph`](https://deno.land/x/deno_graph) to enrich the
+   * information about a module graph. */
   cacheInfo = (specifier: string): CacheInfo => {
+    // when we are "read-only" (e.g. Deploy) we can access sync versions of APIs
+    // so we can't return the cache info synchronously.
+    if (this.#readOnly) {
+      return {};
+    }
     const url = new URL(specifier);
     const local = this.#httpCache.getCacheFilename(url);
     const emitCache = DiskCache.getCacheFilenameWithExtension(url, "js");
@@ -73,7 +87,7 @@ export class FetchCacher {
     };
   };
 
-  get(type: CacheType, specifier: string): string | undefined {
+  async get(type: CacheType, specifier: string): Promise<string | undefined> {
     const url = new URL(specifier);
     let extension: string;
     switch (type) {
@@ -90,7 +104,7 @@ export class FetchCacher {
         extension = "buildinfo";
         break;
       case "version": {
-        const data = this.#getEmitMetadata(url);
+        const data = await this.#getEmitMetadata(url);
         return data ? data.version_hash : undefined;
       }
     }
@@ -106,7 +120,7 @@ export class FetchCacher {
     return this.#fileFetcher.fetch(url);
   };
 
-  set(type: CacheType, specifier: string, value: string): void {
+  async set(type: CacheType, specifier: string, value: string): Promise<void> {
     const url = new URL(specifier);
     let extension: string;
     switch (type) {
@@ -123,7 +137,7 @@ export class FetchCacher {
         extension = "buildinfo";
         break;
       case "version": {
-        let data = this.#getEmitMetadata(url);
+        let data = await this.#getEmitMetadata(url);
         if (data) {
           data.version_hash = value;
         } else {

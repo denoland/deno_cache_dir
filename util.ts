@@ -12,7 +12,7 @@ export function assert(cond: unknown, msg = "Assertion failed."): asserts cond {
 
 /**
  * Generates a sha256 hex hash for a given input string.  This mirrors the
- * behaviour of Deno CLI's `cli::checksum::gen`.
+ * behavior of Deno CLI's `cli::checksum::gen`.
  *
  * Would love to use the Crypto API here, but it only works async and we need
  * to be able to generate the hashes sync to be able to keep the cache able to
@@ -58,6 +58,18 @@ export function urlToFilename(url: URL) {
   }
   const hashedFilename = hash(restStr);
   return join(cacheFilename, hashedFilename);
+}
+
+export async function isFile(filePath: string): Promise<boolean> {
+  try {
+    const stats = await Deno.lstat(filePath);
+    return stats.isFile;
+  } catch (err) {
+    if (err instanceof Deno.errors.NotFound) {
+      return false;
+    }
+    throw err;
+  }
 }
 
 export function isFileSync(filePath: string): boolean {

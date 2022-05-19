@@ -4,10 +4,10 @@ import { DenoDir } from "./deno_dir.ts";
 
 Deno.test({
   name: "DenoDir - basic",
-  fn() {
+  async fn() {
     const denoDir = new DenoDir();
     const url = new URL("https://deno.land/std@0.140.0/path/mod.ts");
-    const [file, headers] = denoDir.deps.get(url)!;
+    const [file, headers] = (await denoDir.deps.get(url))!;
     console.log(headers);
     file.close();
   },

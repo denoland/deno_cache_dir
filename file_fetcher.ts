@@ -142,7 +142,7 @@ export class FileFetcher {
       throw new Deno.errors.Http("Too many redirects");
     }
 
-    const cached = this.#httpCache.get(specifier);
+    const cached = await this.#httpCache.get(specifier);
     if (!cached) {
       return undefined;
     }
@@ -186,7 +186,7 @@ export class FileFetcher {
     }
 
     const requestHeaders = new Headers();
-    const cached = this.#httpCache.get(specifier);
+    const cached = await this.#httpCache.get(specifier);
     if (cached) {
       const [file, cachedHeaders] = cached;
       file.close();
