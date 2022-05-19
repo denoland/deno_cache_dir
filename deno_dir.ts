@@ -11,8 +11,11 @@ export class DenoDir {
   gen: DiskCache;
   root: string;
 
-  constructor(root?: string) {
+  constructor(root?: string | URL, readOnly = false) {
     if (root) {
+      if (root instanceof URL) {
+        root = root.toString();
+      }
       if (!isAbsolute(root)) {
         root = normalize(join(Deno.cwd(), root));
       }
@@ -42,7 +45,7 @@ export class DenoDir {
     Deno.permissions.request({ name: "read" });
     Deno.permissions.request({ name: "write", path: root });
     this.root = root;
-    this.deps = new HttpCache(join(root, "deps"));
+    this.deps = new HttpCache(join(root, "deps"), readOnly);
     this.gen = new DiskCache(join(root, "gen"));
   }
 }
