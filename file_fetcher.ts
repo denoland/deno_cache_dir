@@ -20,8 +20,6 @@ import type { HttpCache } from "./http_cache.ts";
  */
 export type CacheSetting = "only" | "reloadAll" | "use" | string[];
 
-await Deno.permissions.request({ name: "env", variable: "DENO_AUTH_TOKENS" });
-
 function shouldUseCache(cacheSetting: CacheSetting, specifier: URL): boolean {
   switch (cacheSetting) {
     case "only":
@@ -102,6 +100,7 @@ export class FileFetcher {
     cacheSetting: CacheSetting = "use",
     allowRemote = true,
   ) {
+    Deno.permissions.request({ name: "env", variable: "DENO_AUTH_TOKENS" });
     this.#authTokens = new AuthTokens(Deno.env.get("DENO_AUTH_TOKENS"));
     this.#allowRemote = allowRemote;
     this.#cacheSetting = cacheSetting;
