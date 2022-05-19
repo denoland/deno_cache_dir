@@ -6,7 +6,7 @@ Deno.test({
   name: "DenoDir - basic",
   fn() {
     const denoDir = new DenoDir();
-    const url = new URL("https://deno.land/std@0.110.0/path/mod.ts");
+    const url = new URL("https://deno.land/std@0.140.0/path/mod.ts");
     const [file, headers] = denoDir.deps.get(url)!;
     console.log(headers);
     file.close();

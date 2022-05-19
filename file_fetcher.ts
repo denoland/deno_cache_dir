@@ -79,6 +79,7 @@ async function fetchLocal(specifier: URL): Promise<LoadResponse | undefined> {
     const source = await Deno.readTextFile(local);
     const content = stripHashbang(source);
     return {
+      kind: "module",
       content,
       specifier: specifier.toString(),
     };
@@ -127,6 +128,7 @@ export class FileFetcher {
     }
     this.#httpCache.set(specifier, headers, content);
     return {
+      kind: "module",
       specifier: specifier.toString(),
       headers,
       content,
@@ -156,6 +158,7 @@ export class FileFetcher {
     file.close();
     const content = decoder.decode(bytes);
     return {
+      kind: "module",
       specifier: specifier.toString(),
       headers,
       content,
@@ -219,6 +222,7 @@ export class FileFetcher {
     }
     this.#httpCache.set(url, headers, content);
     return {
+      kind: "module",
       specifier: response.url,
       headers,
       content,
