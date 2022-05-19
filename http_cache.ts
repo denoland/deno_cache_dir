@@ -48,7 +48,7 @@ export class HttpCache {
     return join(this.location, urlToFilename(url));
   }
 
-  get(url: URL): [Deno.File, Record<string, string>] | undefined {
+  get(url: URL): [Deno.FsFile, Record<string, string>] | undefined {
     const cacheFilename = join(this.location, urlToFilename(url));
     const metadataFilename = Metadata.filename(cacheFilename);
     if (!isFileSync(cacheFilename)) {
