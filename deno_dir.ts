@@ -43,7 +43,6 @@ export class DenoDir {
     assert(root, "Could not set the Deno root directory");
     assert(isAbsolute(root), `The root directory "${root}" is not absolute.`);
     Deno.permissions.request({ name: "read" });
-    Deno.permissions.request({ name: "write", path: root });
     this.root = root;
     this.deps = new HttpCache(join(root, "deps"), readOnly);
     this.gen = new DiskCache(join(root, "gen"));
