@@ -31,7 +31,7 @@ export class FetchCacher {
   #diskCache: DiskCache;
   #fileFetcher: FileFetcher;
   #httpCache: HttpCache;
-  #readOnly: boolean;
+  #readOnly!: boolean;
 
   async #getEmitMetadata(specifier: URL): Promise<EmitMetadata | undefined> {
     const filename = DiskCache.getCacheFilenameWithExtension(specifier, "meta");
@@ -55,12 +55,19 @@ export class FetchCacher {
     diskCache: DiskCache,
     httpCache: HttpCache,
     fileFetcher: FileFetcher,
-    readOnly: boolean,
+    readOnly?: boolean,
   ) {
     this.#diskCache = diskCache;
     this.#fileFetcher = fileFetcher;
     this.#httpCache = httpCache;
-    this.#readOnly = readOnly;
+    if (readOnly === undefined) {
+      (async () => {
+        this.#readOnly =
+          (await Deno.permissions.query({ name: "write" })).state === "denied";
+      })();
+    } else {
+      this.#readOnly = readOnly;
+    }
   }
 
   /** Provides information about the state of the cache, which is used by

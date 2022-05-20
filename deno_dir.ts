@@ -11,7 +11,7 @@ export class DenoDir {
   gen: DiskCache;
   root: string;
 
-  constructor(root?: string | URL, readOnly = false) {
+  constructor(root?: string | URL, readOnly?: boolean) {
     if (root) {
       if (root instanceof URL) {
         root = root.toString();

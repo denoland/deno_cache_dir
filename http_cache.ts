@@ -38,9 +38,9 @@ class Metadata {
 
 export class HttpCache {
   location: string;
-  readOnly: boolean;
+  readOnly?: boolean;
 
-  constructor(location: string, readOnly: boolean) {
+  constructor(location: string, readOnly?: boolean) {
     assert(isAbsolute(location));
     this.location = location;
     this.readOnly = readOnly;
@@ -72,6 +72,12 @@ export class HttpCache {
     headers: Record<string, string>,
     content: string,
   ): Promise<void> {
+    if (this.readOnly === undefined) {
+      this.readOnly =
+        (await Deno.permissions.query({ name: "write" })).state === "denied"
+          ? true
+          : false;
+    }
     if (this.readOnly) {
       return;
     }
