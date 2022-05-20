@@ -11,7 +11,7 @@ export class DenoDir {
   gen: DiskCache;
   root: string;
 
-  constructor(root?: string | URL, readOnly = false) {
+  constructor(root?: string | URL, readOnly?: boolean) {
     if (root) {
       if (root instanceof URL) {
         root = root.toString();
@@ -43,7 +43,6 @@ export class DenoDir {
     assert(root, "Could not set the Deno root directory");
     assert(isAbsolute(root), `The root directory "${root}" is not absolute.`);
     Deno.permissions.request({ name: "read" });
-    Deno.permissions.request({ name: "write", path: root });
     this.root = root;
     this.deps = new HttpCache(join(root, "deps"), readOnly);
     this.gen = new DiskCache(join(root, "gen"));

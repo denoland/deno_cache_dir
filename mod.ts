@@ -85,12 +85,6 @@ export function createCache(
   { root, cacheSetting = "use", allowRemote = true, readOnly }: CacheOptions =
     {},
 ): Loader & Cacher {
-  if (readOnly === undefined) {
-    // this detects when we are running in environments like Deno Deploy where
-    // the `Deno.writeFile` is not available.
-    readOnly = !("Deno" in globalThis && "writeFile" in Deno &&
-      typeof Deno.writeFile === "function");
-  }
   const denoDir = new DenoDir(root, readOnly);
   const fileFetcher = new FileFetcher(denoDir.deps, cacheSetting, allowRemote);
   return new FetchCacher(denoDir.gen, denoDir.deps, fileFetcher, readOnly);
