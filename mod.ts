@@ -32,12 +32,12 @@
  * @module
  */
 
-import { type CacheType, FetchCacher } from "./cache.ts";
+import { FetchCacher } from "./cache.ts";
 import { type CacheInfo, type LoadResponse } from "./deps.ts";
 import { DenoDir } from "./deno_dir.ts";
 import { type CacheSetting, FileFetcher } from "./file_fetcher.ts";
 
-export { type CacheType, FetchCacher } from "./cache.ts";
+export { FetchCacher } from "./cache.ts";
 export { DenoDir } from "./deno_dir.ts";
 export { type CacheSetting, FileFetcher } from "./file_fetcher.ts";
 
@@ -50,13 +50,6 @@ export interface Loader {
    * dependencies in the graph in the disk cache.
    */
   load(specifier: string): Promise<LoadResponse | undefined>;
-}
-
-export interface Cacher {
-  /** Retrieve a specific type of cached resource from the disk cache. */
-  get(type: CacheType, specifier: string): Promise<string | undefined>;
-  /** Set a specific type of cached resource to the disk cache. */
-  set(type: CacheType, specifier: string, value: string): Promise<void>;
 }
 
 export interface CacheOptions {
@@ -84,7 +77,7 @@ export interface CacheOptions {
 export function createCache(
   { root, cacheSetting = "use", allowRemote = true, readOnly }: CacheOptions =
     {},
-): Loader & Cacher {
+): Loader {
   const denoDir = new DenoDir(root, readOnly);
   const fileFetcher = new FileFetcher(denoDir.deps, cacheSetting, allowRemote);
   return new FetchCacher(denoDir.gen, denoDir.deps, fileFetcher, readOnly);
