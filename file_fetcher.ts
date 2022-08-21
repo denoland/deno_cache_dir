@@ -5,7 +5,8 @@ import { colors, fromFileUrl, readAll } from "./deps.ts";
 import type { LoadResponse } from "./deps.ts";
 import type { HttpCache } from "./http_cache.ts";
 
-/** A setting that determines how the cache is handled for remote dependencies.
+/** 
+ * A setting that determines how the cache is handled for remote dependencies.
  *
  * The default is `"use"`.
  *
@@ -70,7 +71,7 @@ async function fetchLocal(specifier: URL): Promise<LoadResponse | undefined> {
   const local = fromFileUrl(specifier);
   if (!local) {
     throw new TypeError(
-      `Invalid file path.\n  Specifier: ${specifier.toString()}`,
+      `Invalid file path.\n  Specifier: "${specifier.toString()}"`,
     );
   }
   try {
@@ -139,7 +140,7 @@ export class FileFetcher {
     redirectLimit: number,
   ): Promise<LoadResponse | undefined> {
     if (redirectLimit < 0) {
-      throw new Deno.errors.Http("Too many redirects");
+      throw new Deno.errors.Http(`Too many redirects.\n  Specifier: "${specifier.toString()}"`);
     }
 
     const cached = await this.#httpCache.get(specifier);
@@ -169,7 +170,7 @@ export class FileFetcher {
     redirectLimit: number,
   ): Promise<LoadResponse | undefined> {
     if (redirectLimit < 0) {
-      throw new Deno.errors.Http("Too many redirects.");
+      throw new Deno.errors.Http(`Too many redirects.\n  Specifier: "${specifier.toString()}"`);
     }
 
     if (shouldUseCache(this.#cacheSetting, specifier)) {
@@ -210,7 +211,7 @@ export class FileFetcher {
       }
     }
     // WHATWG fetch follows redirects automatically, so we will try to
-    // determine if that ocurred and cache the value.
+    // determine if that occurred and cache the value.
     if (specifier.toString() !== response.url) {
       const headers = { "location": response.url };
       await this.#httpCache.set(specifier, headers, "");
@@ -243,7 +244,7 @@ export class FileFetcher {
       return response;
     } else if (!this.#allowRemote) {
       throw new Deno.errors.PermissionDenied(
-        `A remote specifier was requested: "${specifier.toString()}", but --no-remote is specifier`,
+        `A remote specifier was requested: "${specifier.toString()}", but --no-remote is specified.`,
       );
     } else {
       const response = await this.#fetchRemote(specifier, 10);
