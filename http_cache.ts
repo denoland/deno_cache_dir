@@ -73,10 +73,8 @@ export class HttpCache {
     content: string,
   ): Promise<void> {
     if (this.readOnly === undefined) {
-      this.readOnly =
-        (await Deno.permissions.query({ name: "write" })).state === "denied"
-          ? true
-          : false;
+      const writeState = (await Deno.permissions.query({ name: "write" })).state;
+      this.readOnly = writeState === "denied" || writeState === "prompt";
     }
     if (this.readOnly) {
       return;
