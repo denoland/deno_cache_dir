@@ -28,7 +28,7 @@ Deno.test({
   },
   async fn() {
     const denoDir = new DenoDir();
-    const fileFetcher = new FileFetcher(denoDir.deps, 'reloadAll');
+    const fileFetcher = new FileFetcher(denoDir.deps, "reloadAll");
     await fileFetcher.fetch(new URL("https://deno.land/x/oak@v10.5.1/mod.ts"));
   },
 });
