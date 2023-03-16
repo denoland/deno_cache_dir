@@ -2,9 +2,9 @@
 
 // std library dependencies
 
-export { ensureDir } from "https://deno.land/std@0.140.0/fs/ensure_dir.ts";
-export * as colors from "https://deno.land/std@0.140.0/fmt/colors.ts";
-export { Sha256 } from "https://deno.land/std@0.140.0/hash/sha256.ts";
+export { ensureDir } from "https://deno.land/std@0.180.0/fs/ensure_dir.ts";
+export * as colors from "https://deno.land/std@0.180.0/fmt/colors.ts";
+export { Sha256 } from "https://deno.land/std@0.160.0/hash/sha256.ts";
 export {
   dirname,
   extname,
@@ -13,11 +13,11 @@ export {
   join,
   normalize,
   sep,
-} from "https://deno.land/std@0.140.0/path/mod.ts";
+} from "https://deno.land/std@0.180.0/path/mod.ts";
 export {
   readAll,
   writeAll,
-} from "https://deno.land/std@0.140.0/streams/conversion.ts";
+} from "https://deno.land/std@0.180.0/streams/mod.ts";
 
 // type only dependencies of `deno_graph`
 
