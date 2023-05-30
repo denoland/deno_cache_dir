@@ -17,7 +17,9 @@ Deno.test({
   fn() {
     assertEquals(
       urlToFilename(new URL("https://cdn.skypack.dev/svelte/internal")),
-      "https/cdn.skypack.dev/dae962c780900e18d25c9d22ed772d40dfcd93eb857d43c6e4f383f2c69ae40f",
+      Deno.build.os === "windows"
+        ? "https\\cdn.skypack.dev\\dae962c780900e18d25c9d22ed772d40dfcd93eb857d43c6e4f383f2c69ae40f"
+        : "https/cdn.skypack.dev/dae962c780900e18d25c9d22ed772d40dfcd93eb857d43c6e4f383f2c69ae40f",
     );
   },
 });
@@ -27,7 +29,9 @@ Deno.test({
   fn() {
     assertEquals(
       urlToFilename(new URL("https://cdn.skypack.dev/svelte/compiler?dts")),
-      "https/cdn.skypack.dev/0f37079a386379010b507f219d5e9e7b661a94f25a4b34742d589cf89847fc47",
+      Deno.build.os === "windows"
+        ? "https\\cdn.skypack.dev\\0f37079a386379010b507f219d5e9e7b661a94f25a4b34742d589cf89847fc47"
+        : "https/cdn.skypack.dev/0f37079a386379010b507f219d5e9e7b661a94f25a4b34742d589cf89847fc47",
     );
   },
 });
