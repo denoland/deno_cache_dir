@@ -5,7 +5,7 @@ import { colors, fromFileUrl, readAll } from "./deps.ts";
 import type { LoadResponse } from "./deps.ts";
 import type { HttpCache } from "./http_cache.ts";
 
-/** 
+/**
  * A setting that determines how the cache is handled for remote dependencies.
  *
  * The default is `"use"`.
@@ -140,7 +140,9 @@ export class FileFetcher {
     redirectLimit: number,
   ): Promise<LoadResponse | undefined> {
     if (redirectLimit < 0) {
-      throw new Deno.errors.Http(`Too many redirects.\n  Specifier: "${specifier.toString()}"`);
+      throw new Deno.errors.Http(
+        `Too many redirects.\n  Specifier: "${specifier.toString()}"`,
+      );
     }
 
     const cached = await this.#httpCache.get(specifier);
@@ -170,7 +172,9 @@ export class FileFetcher {
     redirectLimit: number,
   ): Promise<LoadResponse | undefined> {
     if (redirectLimit < 0) {
-      throw new Deno.errors.Http(`Too many redirects.\n  Specifier: "${specifier.toString()}"`);
+      throw new Deno.errors.Http(
+        `Too many redirects.\n  Specifier: "${specifier.toString()}"`,
+      );
     }
 
     if (shouldUseCache(this.#cacheSetting, specifier)) {
