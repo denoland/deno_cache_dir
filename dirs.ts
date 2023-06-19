@@ -8,7 +8,10 @@ export function cacheDir(): string | undefined {
     if (home) {
       return join(home, "Library/Caches");
     }
-  } else if (Deno.build.os === "linux") {
+  } else if (Deno.build.os === "windows") {
+    Deno.permissions.request({ name: "env", variable: "LOCALAPPDATA" });
+    return Deno.env.get("LOCALAPPDATA");
+  } else {
     Deno.permissions.request({ name: "env", variable: "XDG_CACHE_HOME" });
     const cacheHome = Deno.env.get("XDG_CACHE_HOME");
     if (cacheHome) {
@@ -19,22 +22,15 @@ export function cacheDir(): string | undefined {
         return join(home, ".cache");
       }
     }
-  } else {
-    Deno.permissions.request({ name: "env", variable: "LOCALAPPDATA" });
-    return Deno.env.get("LOCALAPPDATA");
   }
 }
 
 export function homeDir(): string | undefined {
-  switch (Deno.build.os) {
-    case "windows":
-      Deno.permissions.request({ name: "env", variable: "USERPROFILE" });
-      return Deno.env.get("USERPROFILE");
-    case "linux":
-    case "darwin":
-      Deno.permissions.request({ name: "env", variable: "HOME" });
-      return Deno.env.get("HOME");
-    default:
-      throw Error("unreachable");
+  if (Deno.build.os === "windows") {
+    Deno.permissions.request({ name: "env", variable: "USERPROFILE" });
+    return Deno.env.get("USERPROFILE");
+  } else {
+    Deno.permissions.request({ name: "env", variable: "HOME" });
+    return Deno.env.get("HOME");
   }
 }
