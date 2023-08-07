@@ -21,7 +21,7 @@ pub mod wasm {
   use std::path::Path;
   use std::path::PathBuf;
   use std::sync::Arc;
-use std::time::SystemTime;
+  use std::time::SystemTime;
 
   use url::Url;
   use wasm_bindgen::prelude::*;
@@ -66,16 +66,12 @@ use std::time::SystemTime;
       Ok(())
     }
 
-    fn modified(
-      &self,
-      path: &Path,
-    ) -> std::io::Result<Option<SystemTime>> {
+    fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>> {
       if let Some(time) =
         modified_time(&path.to_string_lossy()).map_err(js_to_io_error)?
       {
         Ok(Some(
-          SystemTime::UNIX_EPOCH
-            + std::time::Duration::from_secs(time as u64),
+          SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(time as u64),
         ))
       } else {
         Ok(None)
@@ -86,12 +82,9 @@ use std::time::SystemTime;
       is_file(&path.to_string_lossy())
     }
 
-    fn time_now(
-      &self,
-    ) -> SystemTime {
+    fn time_now(&self) -> SystemTime {
       let time = time_now();
-      SystemTime::UNIX_EPOCH
-        + std::time::Duration::from_secs(time as u64)
+      SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(time as u64)
     }
   }
 

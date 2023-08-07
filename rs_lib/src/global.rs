@@ -69,7 +69,7 @@ pub struct GlobalHttpCache<Env: DenoCacheEnv> {
 
 impl<Env: DenoCacheEnv> GlobalHttpCache<Env> {
   pub fn new(path: PathBuf, env: Env) -> Self {
-    #[cfg(not(feature="wasm"))]
+    #[cfg(not(feature = "wasm"))]
     assert!(path.is_absolute());
     Self { path, env }
   }

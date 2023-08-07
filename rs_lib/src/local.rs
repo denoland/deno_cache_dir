@@ -35,7 +35,7 @@ pub struct LocalLspHttpCache<Env: DenoCacheEnv> {
 
 impl<Env: DenoCacheEnv> LocalLspHttpCache<Env> {
   pub fn new(path: PathBuf, global_cache: Arc<GlobalHttpCache<Env>>) -> Self {
-    #[cfg(not(feature="wasm"))]
+    #[cfg(not(feature = "wasm"))]
     assert!(path.is_absolute());
     let manifest = LocalCacheManifest::new_for_lsp(
       path.join("manifest.json"),
@@ -185,7 +185,7 @@ pub struct LocalHttpCache<Env: DenoCacheEnv> {
 
 impl<Env: DenoCacheEnv> LocalHttpCache<Env> {
   pub fn new(path: PathBuf, global_cache: Arc<GlobalHttpCache<Env>>) -> Self {
-    #[cfg(not(feature="wasm"))]
+    #[cfg(not(feature = "wasm"))]
     assert!(path.is_absolute());
     let manifest = LocalCacheManifest::new(
       path.join("manifest.json"),
