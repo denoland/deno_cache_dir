@@ -49,7 +49,7 @@ export function atomic_write_file(path, bytes) {
 
   function randomHex() {
     //https://stackoverflow.com/a/27747377/188246
-    const arr = new Uint8Array(10);
+    const arr = new Uint8Array(2);
     crypto.getRandomValues(arr);
     return Array.from(arr, (dec) => dec.toString(16).padStart(2, "0")).join("");
   }
