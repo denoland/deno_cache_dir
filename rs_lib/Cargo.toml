@@ -22,7 +22,7 @@ ring = "0.16.20"
 serde = "1.0.183"
 serde_json = "1.0.104"
 thiserror = "1.0.44"
-url = { version = "2.4.0", features = ["serde"] }
+url = { version = "2.3.1", features = ["serde"] }
 
 console_error_panic_hook = { version = "0.1.6", optional = true }
 js-sys = { version = "=0.3.63", optional = true }
