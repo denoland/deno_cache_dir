@@ -2,6 +2,7 @@
 
 [![deno doc](https://doc.deno.land/badge.svg)](https://doc.deno.land/https://deno.land/x/deno_cache/mod.ts)
 [![Build Status - Cirrus][]][Build status] [![Twitter handle][]][Twitter badge]
+[![](https://img.shields.io/crates/v/deno_cache_dir.svg)](https://crates.io/crates/deno_cache_dir)
 [![Discord Chat](https://img.shields.io/discord/684898665143206084?logo=discord&style=social)](https://discord.gg/deno)
 
 Implementation of the DENO_DIR/cache for the Deno CLI.
@@ -54,10 +55,6 @@ const graph = await createGraph("https://deno.land/x/oak@v9.0.1/mod.ts", {
 // log out the console a similar output to `deno info` on the command line.
 console.log(graph.toString());
 ```
-
----
-
-Copyright 2018-2022 the Deno authors. All rights reserved. MIT License.
 
 [Build Status - Cirrus]: https://github.com/denoland/deno_cache/workflows/ci/badge.svg?branch=main&event=push
 [Build status]: https://github.com/denoland/deno_cache/actions
