@@ -8,7 +8,7 @@ mod local;
 pub use cache::CachedUrlMetadata;
 pub use cache::HttpCache;
 pub use cache::HttpCacheItemKey;
-pub use common::DenoCacheFs;
+pub use common::DenoCacheEnv;
 pub use global::url_to_filename;
 pub use global::GlobalHttpCache;
 pub use local::LocalHttpCache;
@@ -20,12 +20,14 @@ pub mod wasm {
   use std::io::ErrorKind;
   use std::path::Path;
   use std::path::PathBuf;
+  use std::sync::Arc;
+use std::time::SystemTime;
 
   use url::Url;
   use wasm_bindgen::prelude::*;
 
   use crate::CachedUrlMetadata;
-  use crate::DenoCacheFs;
+  use crate::DenoCacheEnv;
   use crate::HttpCache;
 
   #[wasm_bindgen(module = "/fs.js")]
@@ -37,12 +39,13 @@ pub mod wasm {
     #[wasm_bindgen(catch)]
     fn modified_time(path: &str) -> Result<Option<usize>, JsValue>;
     fn is_file(path: &str) -> bool;
+    fn time_now() -> usize;
   }
 
   #[derive(Clone, Debug)]
-  struct WasmFs;
+  struct WasmEnv;
 
-  impl DenoCacheFs for WasmFs {
+  impl DenoCacheEnv for WasmEnv {
     fn read_file_bytes(&self, path: &Path) -> std::io::Result<Option<Vec<u8>>> {
       let js_value =
         read_file_bytes(&path.to_string_lossy()).map_err(js_to_io_error)?;
@@ -66,12 +69,12 @@ pub mod wasm {
     fn modified(
       &self,
       path: &Path,
-    ) -> std::io::Result<Option<std::time::SystemTime>> {
+    ) -> std::io::Result<Option<SystemTime>> {
       if let Some(time) =
         modified_time(&path.to_string_lossy()).map_err(js_to_io_error)?
       {
         Ok(Some(
-          std::time::SystemTime::UNIX_EPOCH
+          SystemTime::UNIX_EPOCH
             + std::time::Duration::from_secs(time as u64),
         ))
       } else {
@@ -82,10 +85,19 @@ pub mod wasm {
     fn is_file(&self, path: &Path) -> bool {
       is_file(&path.to_string_lossy())
     }
+
+    fn time_now(
+      &self,
+    ) -> SystemTime {
+      let time = time_now();
+      SystemTime::UNIX_EPOCH
+        + std::time::Duration::from_secs(time as u64)
+    }
   }
 
   #[wasm_bindgen]
   pub fn url_to_filename(url: &str) -> Result<String, JsValue> {
+    console_error_panic_hook::set_once();
     let url = Url::parse(url).map_err(|e| as_js_error(e.into()))?;
     crate::global::url_to_filename(&url)
       .map(|s| s.to_string_lossy().to_string())
@@ -94,25 +106,25 @@ pub mod wasm {
 
   #[wasm_bindgen]
   pub struct GlobalHttpCache {
-    cache: crate::GlobalHttpCache<WasmFs>,
+    cache: crate::GlobalHttpCache<WasmEnv>,
   }
 
   #[wasm_bindgen]
   impl GlobalHttpCache {
     pub fn new(path: &str) -> Self {
       Self {
-        cache: crate::GlobalHttpCache::new(PathBuf::from(path), WasmFs),
+        cache: crate::GlobalHttpCache::new(PathBuf::from(path), WasmEnv),
       }
     }
 
-    #[wasm_bindgen(js_name = getMetadata)]
-    pub fn get_metadata(&self, url: &str) -> Result<JsValue, JsValue> {
-      get_metadata(&self.cache, url)
+    #[wasm_bindgen(js_name = getHeaders)]
+    pub fn get_headers(&self, url: &str) -> Result<JsValue, JsValue> {
+      get_headers(&self.cache, url)
     }
 
-    #[wasm_bindgen(js_name = getFile)]
-    pub fn get_file(&self, url: &str) -> Result<JsValue, JsValue> {
-      get_file(&self.cache, url)
+    #[wasm_bindgen(js_name = getFileText)]
+    pub fn get_file_text(&self, url: &str) -> Result<JsValue, JsValue> {
+      get_file_text(&self.cache, url)
     }
 
     pub fn set(
@@ -125,7 +137,43 @@ pub mod wasm {
     }
   }
 
-  fn get_metadata<Cache: HttpCache>(
+  #[wasm_bindgen]
+  pub struct LocalHttpCache {
+    cache: crate::LocalHttpCache<WasmEnv>,
+  }
+
+  #[wasm_bindgen]
+  impl LocalHttpCache {
+    pub fn new(local_path: &str, global_path: &str) -> Self {
+      console_error_panic_hook::set_once();
+      let global =
+        crate::GlobalHttpCache::new(PathBuf::from(global_path), WasmEnv);
+      let local =
+        crate::LocalHttpCache::new(PathBuf::from(local_path), Arc::new(global));
+      Self { cache: local }
+    }
+
+    #[wasm_bindgen(js_name = getHeaders)]
+    pub fn get_headers(&self, url: &str) -> Result<JsValue, JsValue> {
+      get_headers(&self.cache, url)
+    }
+
+    #[wasm_bindgen(js_name = getFileText)]
+    pub fn get_file_text(&self, url: &str) -> Result<JsValue, JsValue> {
+      get_file_text(&self.cache, url)
+    }
+
+    pub fn set(
+      &self,
+      url: &str,
+      headers: JsValue,
+      text: &[u8],
+    ) -> Result<(), JsValue> {
+      set(&self.cache, url, headers, text)
+    }
+  }
+
+  fn get_headers<Cache: HttpCache>(
     cache: &Cache,
     url: &str,
   ) -> Result<JsValue, JsValue> {
@@ -140,13 +188,15 @@ pub mod wasm {
 
     inner(cache, url)
       .map(|metadata| match metadata {
-        Some(metadata) => serde_wasm_bindgen::to_value(&metadata).unwrap(),
+        Some(metadata) => {
+          serde_wasm_bindgen::to_value(&metadata.headers).unwrap()
+        }
         None => JsValue::undefined(),
       })
       .map_err(as_js_error)
   }
 
-  fn get_file<Cache: HttpCache>(
+  fn get_file_text<Cache: HttpCache>(
     cache: &Cache,
     url: &str,
   ) -> Result<JsValue, JsValue> {
@@ -163,8 +213,8 @@ pub mod wasm {
     }
 
     inner(cache, url)
-      .map(|metadata| match metadata {
-        Some(metadata) => serde_wasm_bindgen::to_value(&metadata).unwrap(),
+      .map(|text| match text {
+        Some(text) => JsValue::from(text),
         None => JsValue::undefined(),
       })
       .map_err(as_js_error)

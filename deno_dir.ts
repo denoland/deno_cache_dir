@@ -1,24 +1,46 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-import { isAbsolute, join, normalize } from "./deps.ts";
+import { isAbsolute, join, normalize, resolve } from "./deps.ts";
 import { DiskCache } from "./disk_cache.ts";
 import { cacheDir, homeDir } from "./dirs.ts";
 import { HttpCache } from "./http_cache.ts";
 import { assert } from "./util.ts";
 
 export class DenoDir {
-  deps: HttpCache;
-  gen: DiskCache;
-  root: string;
+  readonly root: string;
 
-  constructor(root?: string | URL, readOnly?: boolean) {
+  constructor(root?: string | URL) {
+    const resolvedRoot = DenoDir.tryResolveRootPath(root);
+    assert(resolvedRoot, "Could not set the Deno root directory");
+    assert(
+      isAbsolute(resolvedRoot),
+      `The root directory "${resolvedRoot}" is not absolute.`,
+    );
+    Deno.permissions.request({ name: "read", path: resolvedRoot });
+    this.root = resolvedRoot;
+  }
+
+  createGenCache(): DiskCache {
+    return new DiskCache(join(this.root, "gen"));
+  }
+
+  createHttpCache(
+    options?: { vendorRoot?: string | URL; readOnly?: boolean },
+  ): HttpCache {
+    return new HttpCache({
+      root: join(this.root, "deps"),
+      vendorRoot: options?.vendorRoot == null
+        ? undefined
+        : resolvePathOrUrl(options.vendorRoot),
+      readOnly: options?.readOnly,
+    });
+  }
+
+  static tryResolveRootPath(
+    root: string | URL | undefined,
+  ): string | undefined {
     if (root) {
-      if (root instanceof URL) {
-        root = root.toString();
-      }
-      if (!isAbsolute(root)) {
-        root = normalize(join(Deno.cwd(), root));
-      }
+      root = resolvePathOrUrl(root);
     } else {
       Deno.permissions.request({ name: "env", variable: "DENO_DIR" });
       const dd = Deno.env.get("DENO_DIR");
@@ -40,11 +62,13 @@ export class DenoDir {
         }
       }
     }
-    assert(root, "Could not set the Deno root directory");
-    assert(isAbsolute(root), `The root directory "${root}" is not absolute.`);
-    Deno.permissions.request({ name: "read" });
-    this.root = root;
-    this.deps = new HttpCache(join(root, "deps"), readOnly);
-    this.gen = new DiskCache(join(root, "gen"));
+    return root;
   }
+}
+
+function resolvePathOrUrl(path: URL | string) {
+  if (path instanceof URL) {
+    path = path.toString();
+  }
+  return resolve(path);
 }

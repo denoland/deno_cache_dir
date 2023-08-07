@@ -45,7 +45,7 @@ export interface Loader {
   /** A function that can be passed to a `deno_graph` building function to
    * provide information about the cache to populate the output.
    */
-  cacheInfo(specifier: string): CacheInfo;
+  cacheInfo?(specifier: string): CacheInfo;
   /** A function that can be passed to a `deno_graph` that will load and cache
    * dependencies in the graph in the disk cache.
    */
@@ -68,17 +68,26 @@ export interface CacheOptions {
   /** Specifies a path to the root of the cache. Setting this value overrides
    * the detection of location from the environment. */
   root?: string | URL;
+  /** Specifies a path to the local vendor directory if it exists. */
+  vendorRoot?: string | URL;
 }
 
 /**
  * Creates a cache object that allows access to the internal `DENO_DIR` cache
  * structure for remote dependencies and cached output of emitted modules.
  */
-export function createCache(
-  { root, cacheSetting = "use", allowRemote = true, readOnly }: CacheOptions =
-    {},
-): Loader {
-  const denoDir = new DenoDir(root, readOnly);
-  const fileFetcher = new FileFetcher(denoDir.deps, cacheSetting, allowRemote);
-  return new FetchCacher(denoDir.gen, denoDir.deps, fileFetcher, readOnly);
+export function createCache({
+  root,
+  cacheSetting = "use",
+  allowRemote = true,
+  readOnly,
+  vendorRoot,
+}: CacheOptions = {}): Loader {
+  const denoDir = new DenoDir(root);
+  const cache = denoDir.createHttpCache({
+    readOnly,
+    vendorRoot,
+  });
+  const fileFetcher = new FileFetcher(cache, cacheSetting, allowRemote);
+  return new FetchCacher(fileFetcher);
 }

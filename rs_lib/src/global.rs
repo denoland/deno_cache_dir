@@ -12,7 +12,7 @@ use super::cache::CachedUrlMetadata;
 use super::cache::HttpCache;
 use super::cache::HttpCacheItemKey;
 use super::common::base_url_to_filename_parts;
-use super::common::DenoCacheFs;
+use super::common::DenoCacheEnv;
 use crate::common::checksum;
 use crate::common::HeadersMap;
 
@@ -62,15 +62,16 @@ fn base_url_to_filename(url: &Url) -> Option<PathBuf> {
 }
 
 #[derive(Debug)]
-pub struct GlobalHttpCache<Fs: DenoCacheFs> {
+pub struct GlobalHttpCache<Env: DenoCacheEnv> {
   path: PathBuf,
-  pub(crate) fs: Fs,
+  pub(crate) env: Env,
 }
 
-impl<Fs: DenoCacheFs> GlobalHttpCache<Fs> {
-  pub fn new(path: PathBuf, fs: Fs) -> Self {
+impl<Env: DenoCacheEnv> GlobalHttpCache<Env> {
+  pub fn new(path: PathBuf, env: Env) -> Self {
+    #[cfg(not(feature="wasm"))]
     assert!(path.is_absolute());
-    Self { path, fs }
+    Self { path, env }
   }
 
   pub fn get_global_cache_location(&self) -> &PathBuf {
@@ -97,7 +98,7 @@ impl<Fs: DenoCacheFs> GlobalHttpCache<Fs> {
   }
 }
 
-impl<Fs: DenoCacheFs> HttpCache for GlobalHttpCache<Fs> {
+impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
@@ -114,7 +115,7 @@ impl<Fs: DenoCacheFs> HttpCache for GlobalHttpCache<Fs> {
     let Ok(cache_filepath) = self.get_cache_filepath(url) else {
       return false
     };
-    self.fs.is_file(&cache_filepath)
+    self.env.is_file(&cache_filepath)
   }
 
   fn read_modified_time(
@@ -124,7 +125,7 @@ impl<Fs: DenoCacheFs> HttpCache for GlobalHttpCache<Fs> {
     #[cfg(debug_assertions)]
     debug_assert!(!key.is_local_key);
 
-    Ok(self.fs.modified(self.key_file_path(key))?)
+    Ok(self.env.modified(self.key_file_path(key))?)
   }
 
   fn set(
@@ -135,14 +136,14 @@ impl<Fs: DenoCacheFs> HttpCache for GlobalHttpCache<Fs> {
   ) -> Result<(), AnyError> {
     let cache_filepath = self.get_cache_filepath(url)?;
     // Cache content
-    self.fs.atomic_write_file(&cache_filepath, content)?;
+    self.env.atomic_write_file(&cache_filepath, content)?;
 
     let metadata = CachedUrlMetadata {
-      time: SystemTime::now(),
+      time: self.env.time_now(),
       url: url.to_string(),
       headers,
     };
-    write_metadata(&self.fs, &cache_filepath, &metadata)?;
+    write_metadata(&self.env, &cache_filepath, &metadata)?;
 
     Ok(())
   }
@@ -154,7 +155,7 @@ impl<Fs: DenoCacheFs> HttpCache for GlobalHttpCache<Fs> {
     #[cfg(debug_assertions)]
     debug_assert!(!key.is_local_key);
 
-    Ok(self.fs.read_file_bytes(self.key_file_path(key))?)
+    Ok(self.env.read_file_bytes(self.key_file_path(key))?)
   }
 
   fn read_metadata(
@@ -165,7 +166,7 @@ impl<Fs: DenoCacheFs> HttpCache for GlobalHttpCache<Fs> {
     debug_assert!(!key.is_local_key);
 
     let path = self.key_file_path(key).with_extension("metadata.json");
-    let bytes = self.fs.read_file_bytes(&path)?;
+    let bytes = self.env.read_file_bytes(&path)?;
     Ok(match bytes {
       Some(metadata) => Some(serde_json::from_slice(&metadata)?),
       None => None,
@@ -173,14 +174,14 @@ impl<Fs: DenoCacheFs> HttpCache for GlobalHttpCache<Fs> {
   }
 }
 
-fn write_metadata<Fs: DenoCacheFs>(
-  fs: &Fs,
+fn write_metadata<Env: DenoCacheEnv>(
+  env: &Env,
   path: &Path,
   meta_data: &CachedUrlMetadata,
 ) -> Result<(), AnyError> {
   let path = path.with_extension("metadata.json");
   let json = serde_json::to_string_pretty(meta_data)?;
-  fs.atomic_write_file(&path, json.as_bytes())?;
+  env.atomic_write_file(&path, json.as_bytes())?;
   Ok(())
 }
 

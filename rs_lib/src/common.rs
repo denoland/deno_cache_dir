@@ -37,12 +37,13 @@ pub fn base_url_to_filename_parts(
   Some(out)
 }
 
-pub trait DenoCacheFs: Send + Sync + std::fmt::Debug + Clone {
+pub trait DenoCacheEnv: Send + Sync + std::fmt::Debug + Clone {
   fn read_file_bytes(&self, path: &Path) -> std::io::Result<Option<Vec<u8>>>;
   fn atomic_write_file(&self, path: &Path, bytes: &[u8])
     -> std::io::Result<()>;
   fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>>;
   fn is_file(&self, path: &Path) -> bool;
+  fn time_now(&self) -> SystemTime;
 }
 
 pub fn checksum(v: &[&[u8]]) -> String {

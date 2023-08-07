@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use deno_cache_dir::DenoCacheFs;
+use deno_cache_dir::DenoCacheEnv;
 use deno_cache_dir::GlobalHttpCache;
 use deno_cache_dir::HttpCache;
 use deno_cache_dir::LocalHttpCache;
@@ -13,9 +13,9 @@ use tempfile::TempDir;
 use url::Url;
 
 #[derive(Debug, Clone)]
-struct TestRealFs;
+struct TestRealEnv;
 
-impl DenoCacheFs for TestRealFs {
+impl DenoCacheEnv for TestRealEnv {
   fn read_file_bytes(&self, path: &Path) -> std::io::Result<Option<Vec<u8>>> {
     match std::fs::read(path) {
       Ok(s) => Ok(Some(s)),
@@ -52,6 +52,10 @@ impl DenoCacheFs for TestRealFs {
   fn is_file(&self, path: &Path) -> bool {
     path.is_file()
   }
+
+  fn time_now(&self) -> SystemTime {
+    SystemTime::now()
+  }
 }
 
 #[test]
@@ -67,7 +71,7 @@ fn test_global_create_cache() {
   // doesn't make sense to return error in such specific scenarios.
   // For more details check issue:
   // https://github.com/denoland/deno/issues/5688
-  let fs = TestRealFs;
+  let fs = TestRealEnv;
   let cache = GlobalHttpCache::new(cache_path.clone(), fs);
   assert!(!cache.get_global_cache_location().exists());
   let url = Url::parse("http://example.com/foo/bar.js").unwrap();
@@ -79,7 +83,7 @@ fn test_global_create_cache() {
 #[test]
 fn test_global_get_set() {
   let dir = TempDir::new().unwrap();
-  let fs = TestRealFs;
+  let fs = TestRealEnv;
   let cache = GlobalHttpCache::new(dir.path().to_path_buf(), fs);
   let url = Url::parse("https://deno.land/x/welcome.ts").unwrap();
   let mut headers = HashMap::new();
@@ -108,7 +112,7 @@ fn test_local_global_cache() {
   let temp_dir = TempDir::new().unwrap();
   let global_cache_path = temp_dir.path().join("global");
   let local_cache_path = temp_dir.path().join("local");
-  let fs = TestRealFs;
+  let fs = TestRealEnv;
   let global_cache =
     Arc::new(GlobalHttpCache::new(global_cache_path.clone(), fs));
   let local_cache =
@@ -407,7 +411,7 @@ fn test_lsp_local_cache() {
   let temp_dir = TempDir::new().unwrap();
   let global_cache_path = temp_dir.path().join("global");
   let local_cache_path = temp_dir.path().join("local");
-  let fs = TestRealFs;
+  let fs = TestRealEnv;
   let global_cache =
     Arc::new(GlobalHttpCache::new(global_cache_path.to_path_buf(), fs));
   let local_cache = LocalLspHttpCache::new(

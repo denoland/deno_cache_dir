@@ -17,7 +17,7 @@ use url::Url;
 
 use crate::common::checksum;
 use crate::common::HeadersMap;
-use crate::DenoCacheFs;
+use crate::DenoCacheEnv;
 
 use super::common::base_url_to_filename_parts;
 use super::global::GlobalHttpCache;
@@ -29,16 +29,17 @@ use super::HttpCacheItemKey;
 /// A vendor/ folder http cache for the lsp that provides functionality
 /// for doing a reverse mapping.
 #[derive(Debug)]
-pub struct LocalLspHttpCache<Fs: DenoCacheFs> {
-  cache: LocalHttpCache<Fs>,
+pub struct LocalLspHttpCache<Env: DenoCacheEnv> {
+  cache: LocalHttpCache<Env>,
 }
 
-impl<Fs: DenoCacheFs> LocalLspHttpCache<Fs> {
-  pub fn new(path: PathBuf, global_cache: Arc<GlobalHttpCache<Fs>>) -> Self {
+impl<Env: DenoCacheEnv> LocalLspHttpCache<Env> {
+  pub fn new(path: PathBuf, global_cache: Arc<GlobalHttpCache<Env>>) -> Self {
+    #[cfg(not(feature="wasm"))]
     assert!(path.is_absolute());
     let manifest = LocalCacheManifest::new_for_lsp(
       path.join("manifest.json"),
-      global_cache.fs.clone(),
+      global_cache.env.clone(),
     );
     Self {
       cache: LocalHttpCache {
@@ -132,7 +133,7 @@ impl<Fs: DenoCacheFs> LocalLspHttpCache<Fs> {
   }
 }
 
-impl<Fs: DenoCacheFs> HttpCache for LocalLspHttpCache<Fs> {
+impl<Env: DenoCacheEnv> HttpCache for LocalLspHttpCache<Env> {
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
@@ -176,18 +177,19 @@ impl<Fs: DenoCacheFs> HttpCache for LocalLspHttpCache<Fs> {
 }
 
 #[derive(Debug)]
-pub struct LocalHttpCache<Fs: DenoCacheFs> {
+pub struct LocalHttpCache<Env: DenoCacheEnv> {
   path: PathBuf,
-  manifest: LocalCacheManifest<Fs>,
-  global_cache: Arc<GlobalHttpCache<Fs>>,
+  manifest: LocalCacheManifest<Env>,
+  global_cache: Arc<GlobalHttpCache<Env>>,
 }
 
-impl<Fs: DenoCacheFs> LocalHttpCache<Fs> {
-  pub fn new(path: PathBuf, global_cache: Arc<GlobalHttpCache<Fs>>) -> Self {
+impl<Env: DenoCacheEnv> LocalHttpCache<Env> {
+  pub fn new(path: PathBuf, global_cache: Arc<GlobalHttpCache<Env>>) -> Self {
+    #[cfg(not(feature="wasm"))]
     assert!(path.is_absolute());
     let manifest = LocalCacheManifest::new(
       path.join("manifest.json"),
-      global_cache.fs.clone(),
+      global_cache.env.clone(),
     );
     Self {
       path,
@@ -227,8 +229,8 @@ impl<Fs: DenoCacheFs> LocalHttpCache<Fs> {
   }
 
   #[inline]
-  fn fs(&self) -> &Fs {
-    &self.global_cache.fs
+  fn fs(&self) -> &Env {
+    &self.global_cache.env
   }
 
   fn get_url_metadata_checking_global_cache(
@@ -246,7 +248,7 @@ impl<Fs: DenoCacheFs> LocalHttpCache<Fs> {
   }
 }
 
-impl<Fs: DenoCacheFs> HttpCache for LocalHttpCache<Fs> {
+impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
@@ -515,33 +517,33 @@ fn url_to_local_sub_path(
 }
 
 #[derive(Debug)]
-struct LocalCacheManifest<Fs: DenoCacheFs> {
-  fs: Fs,
+struct LocalCacheManifest<Env: DenoCacheEnv> {
+  env: Env,
   file_path: PathBuf,
   data: RwLock<manifest::LocalCacheManifestData>,
 }
 
-impl<Fs: DenoCacheFs> LocalCacheManifest<Fs> {
-  pub fn new(file_path: PathBuf, fs: Fs) -> Self {
-    Self::new_internal(file_path, false, fs)
+impl<Env: DenoCacheEnv> LocalCacheManifest<Env> {
+  pub fn new(file_path: PathBuf, env: Env) -> Self {
+    Self::new_internal(file_path, false, env)
   }
 
-  pub fn new_for_lsp(file_path: PathBuf, fs: Fs) -> Self {
-    Self::new_internal(file_path, true, fs)
+  pub fn new_for_lsp(file_path: PathBuf, env: Env) -> Self {
+    Self::new_internal(file_path, true, env)
   }
 
   fn new_internal(
     file_path: PathBuf,
     use_reverse_mapping: bool,
-    fs: Fs,
+    env: Env,
   ) -> Self {
-    let text = fs
+    let text = env
       .read_file_bytes(&file_path)
       .ok()
       .flatten()
       .and_then(|bytes| String::from_utf8(bytes).ok());
     Self {
-      fs,
+      env,
       data: RwLock::new(manifest::LocalCacheManifestData::new(
         text.as_deref(),
         use_reverse_mapping,
@@ -633,7 +635,7 @@ impl<Fs: DenoCacheFs> LocalCacheManifest<Fs> {
       // don't bother ensuring the directory here because it will
       // eventually be created by files being added to the cache
       let result = self
-        .fs
+        .env
         .atomic_write_file(&self.file_path, data.as_json().as_bytes());
       if let Err(err) = result {
         log::debug!("Failed saving local cache manifest: {:#}", err);
@@ -659,7 +661,7 @@ impl<Fs: DenoCacheFs> LocalCacheManifest<Fs> {
           Cow::Owned(sub_path.as_path_from_root(folder_path))
         };
 
-        let Ok(Some(modified)) = self.fs.modified(&sub_path) else {
+        let Ok(Some(modified)) = self.env.modified(&sub_path) else {
           return None;
         };
 
@@ -683,7 +685,7 @@ impl<Fs: DenoCacheFs> LocalCacheManifest<Fs> {
           return None;
         }
         let file_path = sub_path.as_path_from_root(folder_path);
-        if let Ok(Some(modified)) = self.fs.modified(&file_path) {
+        if let Ok(Some(modified)) = self.env.modified(&file_path) {
           Some(CachedUrlMetadata {
             headers: Default::default(),
             url: url.to_string(),

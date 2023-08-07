@@ -14,7 +14,7 @@ use crate::common::HeadersMap;
 pub struct CachedUrlMetadata {
   pub headers: HeadersMap,
   pub url: String,
-  #[serde(default = "SystemTime::now", rename = "now")]
+  #[serde(rename = "now")]
   pub time: SystemTime,
 }
 
