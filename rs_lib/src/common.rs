@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::time::SystemTime;
 
 use url::Url;
 
@@ -38,7 +39,10 @@ pub fn base_url_to_filename_parts(
 
 pub trait DenoCacheFs: Send + Sync + std::fmt::Debug + Clone {
   fn read_file_bytes(&self, path: &Path) -> std::io::Result<Option<Vec<u8>>>;
-  fn atomic_write_file(&self, path: &Path, bytes: &[u8]) -> std::io::Result<()>;
+  fn atomic_write_file(&self, path: &Path, bytes: &[u8])
+    -> std::io::Result<()>;
+  fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>>;
+  fn is_file(&self, path: &Path) -> bool;
 }
 
 pub fn checksum(v: &[&[u8]]) -> String {

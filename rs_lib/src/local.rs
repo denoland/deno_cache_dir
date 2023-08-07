@@ -8,16 +8,16 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use deno_media_type::MediaType;
 use anyhow::Error as AnyError;
-use parking_lot::RwLock;
-use url::Url;
+use deno_media_type::MediaType;
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
+use parking_lot::RwLock;
+use url::Url;
 
-use crate::DenoCacheFs;
-use crate::common::HeadersMap;
 use crate::common::checksum;
+use crate::common::HeadersMap;
+use crate::DenoCacheFs;
 
 use super::common::base_url_to_filename_parts;
 use super::global::GlobalHttpCache;
@@ -36,7 +36,10 @@ pub struct LocalLspHttpCache<Fs: DenoCacheFs> {
 impl<Fs: DenoCacheFs> LocalLspHttpCache<Fs> {
   pub fn new(path: PathBuf, global_cache: Arc<GlobalHttpCache<Fs>>) -> Self {
     assert!(path.is_absolute());
-    let manifest = LocalCacheManifest::new_for_lsp(path.join("manifest.json"), global_cache.fs.clone());
+    let manifest = LocalCacheManifest::new_for_lsp(
+      path.join("manifest.json"),
+      global_cache.fs.clone(),
+    );
     Self {
       cache: LocalHttpCache {
         path,
@@ -46,6 +49,8 @@ impl<Fs: DenoCacheFs> LocalLspHttpCache<Fs> {
     }
   }
 
+  // Url::from_file_path is not available in wasm, so add this cfg
+  #[cfg(any(unix, windows, target_os = "redox", target_os = "wasi"))]
   pub fn get_file_url(&self, url: &Url) -> Option<Url> {
     let sub_path = {
       let data = self.cache.manifest.data.read();
@@ -54,7 +59,7 @@ impl<Fs: DenoCacheFs> LocalLspHttpCache<Fs> {
       url_to_local_sub_path(url, maybe_content_type).ok()?
     };
     let path = sub_path.as_path_from_root(&self.cache.path);
-    if path.exists() {
+    if self.cache.fs().is_file(&path) {
       Url::from_file_path(path).ok()
     } else {
       None
@@ -180,7 +185,10 @@ pub struct LocalHttpCache<Fs: DenoCacheFs> {
 impl<Fs: DenoCacheFs> LocalHttpCache<Fs> {
   pub fn new(path: PathBuf, global_cache: Arc<GlobalHttpCache<Fs>>) -> Self {
     assert!(path.is_absolute());
-    let manifest = LocalCacheManifest::new(path.join("manifest.json"), global_cache.fs.clone());
+    let manifest = LocalCacheManifest::new(
+      path.join("manifest.json"),
+      global_cache.fs.clone(),
+    );
     Self {
       path,
       manifest,
@@ -206,7 +214,9 @@ impl<Fs: DenoCacheFs> LocalHttpCache<Fs> {
 
       let local_file_path = local_path.as_path_from_root(&self.path);
       // if we're here, then this will be set
-      self.fs().atomic_write_file(&local_file_path, &cached_bytes)?;
+      self
+        .fs()
+        .atomic_write_file(&local_file_path, &cached_bytes)?;
     }
 
     self
@@ -276,10 +286,9 @@ impl<Fs: DenoCacheFs> HttpCache for LocalHttpCache<Fs> {
 
     if !is_redirect {
       // Cache content
-      self.fs().atomic_write_file(
-        &sub_path.as_path_from_root(&self.path),
-        content,
-      )?;
+      self
+        .fs()
+        .atomic_write_file(&sub_path.as_path_from_root(&self.path), content)?;
     }
 
     self.manifest.insert_data(sub_path, url.clone(), headers);
@@ -521,8 +530,16 @@ impl<Fs: DenoCacheFs> LocalCacheManifest<Fs> {
     Self::new_internal(file_path, true, fs)
   }
 
-  fn new_internal(file_path: PathBuf, use_reverse_mapping: bool, fs: Fs) -> Self {
-    let text = std::fs::read_to_string(&file_path).ok();
+  fn new_internal(
+    file_path: PathBuf,
+    use_reverse_mapping: bool,
+    fs: Fs,
+  ) -> Self {
+    let text = fs
+      .read_file_bytes(&file_path)
+      .ok()
+      .flatten()
+      .and_then(|bytes| String::from_utf8(bytes).ok());
     Self {
       fs,
       data: RwLock::new(manifest::LocalCacheManifestData::new(
@@ -615,8 +632,9 @@ impl<Fs: DenoCacheFs> LocalCacheManifest<Fs> {
     if has_changed {
       // don't bother ensuring the directory here because it will
       // eventually be created by files being added to the cache
-      let result =
-        self.fs.atomic_write_file(&self.file_path, data.as_json().as_bytes());
+      let result = self
+        .fs
+        .atomic_write_file(&self.file_path, data.as_json().as_bytes());
       if let Err(err) = result {
         log::debug!("Failed saving local cache manifest: {:#}", err);
       }
@@ -641,14 +659,14 @@ impl<Fs: DenoCacheFs> LocalCacheManifest<Fs> {
           Cow::Owned(sub_path.as_path_from_root(folder_path))
         };
 
-        let Ok(metadata) = sub_path.metadata() else {
+        let Ok(Some(modified)) = self.fs.modified(&sub_path) else {
           return None;
         };
 
         Some(CachedUrlMetadata {
           headers,
           url: url.to_string(),
-          time: metadata.modified().unwrap_or_else(|_| SystemTime::now()),
+          time: modified,
         })
       }
       None => {
@@ -665,11 +683,11 @@ impl<Fs: DenoCacheFs> LocalCacheManifest<Fs> {
           return None;
         }
         let file_path = sub_path.as_path_from_root(folder_path);
-        if let Ok(metadata) = file_path.metadata() {
+        if let Ok(Some(modified)) = self.fs.modified(&file_path) {
           Some(CachedUrlMetadata {
             headers: Default::default(),
             url: url.to_string(),
-            time: metadata.modified().unwrap_or_else(|_| SystemTime::now()),
+            time: modified,
           })
         } else {
           None
@@ -686,10 +704,10 @@ mod manifest {
   use std::path::Path;
   use std::path::PathBuf;
 
-  use url::Url;
   use indexmap::IndexMap;
   use serde::Deserialize;
   use serde::Serialize;
+  use url::Url;
 
   use super::url_to_local_sub_path;
   use super::LocalCacheSubPath;
@@ -970,5 +988,4 @@ mod test {
       )
     }
   }
-
 }

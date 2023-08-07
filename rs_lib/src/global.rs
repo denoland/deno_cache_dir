@@ -1,21 +1,20 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
 use anyhow::Error as AnyError;
-use url::Url;
 use thiserror::Error;
+use url::Url;
 
-use crate::common::HeadersMap;
-use crate::common::checksum;
-use super::common::base_url_to_filename_parts;
-use super::common::DenoCacheFs;
 use super::cache::CachedUrlMetadata;
 use super::cache::HttpCache;
 use super::cache::HttpCacheItemKey;
+use super::common::base_url_to_filename_parts;
+use super::common::DenoCacheFs;
+use crate::common::checksum;
+use crate::common::HeadersMap;
 
 #[derive(Debug, Error)]
 #[error("Can't convert url (\"{}\") to filename.", .url)]
@@ -71,10 +70,7 @@ pub struct GlobalHttpCache<Fs: DenoCacheFs> {
 impl<Fs: DenoCacheFs> GlobalHttpCache<Fs> {
   pub fn new(path: PathBuf, fs: Fs) -> Self {
     assert!(path.is_absolute());
-    Self {
-      path,
-      fs,
-    }
+    Self { path, fs }
   }
 
   pub fn get_global_cache_location(&self) -> &PathBuf {
@@ -118,7 +114,7 @@ impl<Fs: DenoCacheFs> HttpCache for GlobalHttpCache<Fs> {
     let Ok(cache_filepath) = self.get_cache_filepath(url) else {
       return false
     };
-    cache_filepath.is_file()
+    self.fs.is_file(&cache_filepath)
   }
 
   fn read_modified_time(
@@ -128,11 +124,7 @@ impl<Fs: DenoCacheFs> HttpCache for GlobalHttpCache<Fs> {
     #[cfg(debug_assertions)]
     debug_assert!(!key.is_local_key);
 
-    match std::fs::metadata(self.key_file_path(key)) {
-      Ok(metadata) => Ok(Some(metadata.modified()?)),
-      Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
-      Err(err) => Err(err.into()),
-    }
+    Ok(self.fs.modified(self.key_file_path(key))?)
   }
 
   fn set(

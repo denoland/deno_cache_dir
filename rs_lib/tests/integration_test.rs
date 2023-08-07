@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use deno_cache_dir::DenoCacheFs;
 use deno_cache_dir::GlobalHttpCache;
@@ -23,15 +24,33 @@ impl DenoCacheFs for TestRealFs {
     }
   }
 
-  fn atomic_write_file(&self, path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+  fn atomic_write_file(
+    &self,
+    path: &Path,
+    bytes: &[u8],
+  ) -> std::io::Result<()> {
     match std::fs::write(path, bytes) {
       Ok(()) => Ok(()),
       Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
         std::fs::create_dir_all(path.parent().unwrap())?;
         std::fs::write(path, bytes)
-      },
+      }
       Err(err) => Err(err),
     }
+  }
+
+  fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>> {
+    match std::fs::metadata(path) {
+      Ok(metadata) => Ok(Some(
+        metadata.modified().unwrap_or_else(|_| SystemTime::now()),
+      )),
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+      Err(err) => Err(err),
+    }
+  }
+
+  fn is_file(&self, path: &Path) -> bool {
+    path.is_file()
   }
 }
 
@@ -52,9 +71,7 @@ fn test_global_create_cache() {
   let cache = GlobalHttpCache::new(cache_path.clone(), fs);
   assert!(!cache.get_global_cache_location().exists());
   let url = Url::parse("http://example.com/foo/bar.js").unwrap();
-  cache
-    .set(&url, Default::default(), b"hello world")
-    .unwrap();
+  cache.set(&url, Default::default(), b"hello world").unwrap();
   assert!(cache_path.is_dir());
   assert!(cache.get_global_cache_filepath(&url).unwrap().is_file());
 }
@@ -85,7 +102,6 @@ fn test_global_get_set() {
   assert_eq!(headers.get("etag").unwrap(), "as5625rqdsfb");
   assert_eq!(headers.get("foobar"), None);
 }
-
 
 #[test]
 fn test_local_global_cache() {
@@ -138,10 +154,8 @@ fn test_local_global_cache() {
   // file that's directly mappable to a url
   {
     let content = "export const a = 1;";
-    std::fs::write(local_cache_path
-      .join("deno.land")
-      .join("main.js"),
-      content).unwrap();
+    std::fs::write(local_cache_path.join("deno.land").join("main.js"), content)
+      .unwrap();
 
     // now we should be able to read this file because it's directly mappable to a url
     let url = Url::parse("https://deno.land/main.js").unwrap();
@@ -243,10 +257,8 @@ fn test_local_global_cache() {
     let check_output = |local_cache: &LocalHttpCache<_>| {
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
-        String::from_utf8(
-          local_cache.read_file_bytes(&key).unwrap().unwrap()
-        )
-        .unwrap(),
+        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
+          .unwrap(),
         content
       );
       let metadata = local_cache.read_metadata(&key).unwrap().unwrap();
@@ -288,18 +300,15 @@ fn test_local_global_cache() {
   // try a file that can't be mapped to the file system
   {
     {
-      let url =
-        Url::parse("https://deno.land/INVALID/Module.ts?dev").unwrap();
+      let url = Url::parse("https://deno.land/INVALID/Module.ts?dev").unwrap();
       let content = "export const test = 5;";
       global_cache
         .set(&url, HashMap::new(), content.as_bytes())
         .unwrap();
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
-        String::from_utf8(
-          local_cache.read_file_bytes(&key).unwrap().unwrap()
-        )
-        .unwrap(),
+        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
+          .unwrap(),
         content
       );
       let metadata = local_cache.read_metadata(&key).unwrap().unwrap();
@@ -317,10 +326,8 @@ fn test_local_global_cache() {
         .unwrap();
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
-        String::from_utf8(
-          local_cache.read_file_bytes(&key).unwrap().unwrap()
-        )
-        .unwrap(),
+        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
+          .unwrap(),
         content
       );
       assert!(local_cache_path
@@ -333,10 +340,8 @@ fn test_local_global_cache() {
         global_cache.clone(),
       );
       assert_eq!(
-        String::from_utf8(
-          local_cache.read_file_bytes(&key).unwrap().unwrap()
-        )
-        .unwrap(),
+        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
+          .unwrap(),
         content
       );
     }
@@ -433,7 +438,8 @@ fn test_lsp_local_cache() {
 
     // check getting the file url works
     let file_url = local_cache.get_file_url(&url);
-    let expected = Url::from_directory_path(&local_cache_path).unwrap()
+    let expected = Url::from_directory_path(&local_cache_path)
+      .unwrap()
       .join("deno.land/x/mod.ts")
       .unwrap();
     assert_eq!(file_url, Some(expected));
@@ -492,10 +498,8 @@ fn test_lsp_local_cache() {
         .unwrap();
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
-        String::from_utf8(
-          local_cache.read_file_bytes(&key).unwrap().unwrap()
-        )
-        .unwrap(),
+        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
+          .unwrap(),
         content
       );
 
@@ -520,10 +524,8 @@ fn test_lsp_local_cache() {
         .unwrap();
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
-        String::from_utf8(
-          local_cache.read_file_bytes(&key).unwrap().unwrap()
-        )
-        .unwrap(),
+        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
+          .unwrap(),
         content
       );
       let file_url = local_cache.get_file_url(&url).unwrap();

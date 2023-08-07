@@ -3,9 +3,9 @@
 use anyhow::Error as AnyError;
 use serde::Deserialize;
 use serde::Serialize;
-use url::Url;
 use std::path::PathBuf;
 use std::time::SystemTime;
+use url::Url;
 
 use crate::common::HeadersMap;
 
