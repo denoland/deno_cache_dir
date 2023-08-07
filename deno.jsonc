@@ -1,5 +1,6 @@
 {
   "tasks": {
-    "test": "deno test --allow-read --allow-write --allow-net --allow-env"
+    "test": "deno test --allow-read --allow-write --allow-net --allow-env",
+    "wasmbuild": "deno run -A https://deno.land/x/wasmbuild@0.14.1/main.ts --sync"
   }
 }
