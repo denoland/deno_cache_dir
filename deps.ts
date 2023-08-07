@@ -4,7 +4,6 @@
 
 export { ensureDir } from "https://deno.land/std@0.140.0/fs/ensure_dir.ts";
 export * as colors from "https://deno.land/std@0.140.0/fmt/colors.ts";
-export { Sha256 } from "https://deno.land/std@0.140.0/hash/sha256.ts";
 export {
   dirname,
   extname,
@@ -12,6 +11,7 @@ export {
   isAbsolute,
   join,
   normalize,
+  resolve,
   sep,
 } from "https://deno.land/std@0.140.0/path/mod.ts";
 export {

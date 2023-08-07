@@ -8,7 +8,7 @@ Deno.test({
   name: "FileFetcher",
   async fn() {
     const denoDir = new DenoDir();
-    const fileFetcher = new FileFetcher(denoDir.deps);
+    const fileFetcher = new FileFetcher(denoDir.createHttpCache());
     const graph = await createGraph("https://deno.land/x/oak@v10.5.1/mod.ts", {
       load(specifier) {
         return fileFetcher.fetch(new URL(specifier));

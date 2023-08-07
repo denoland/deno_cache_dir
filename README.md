@@ -2,16 +2,17 @@
 
 [![deno doc](https://doc.deno.land/badge.svg)](https://doc.deno.land/https://deno.land/x/deno_cache/mod.ts)
 [![Build Status - Cirrus][]][Build status] [![Twitter handle][]][Twitter badge]
+[![](https://img.shields.io/crates/v/deno_cache_dir.svg)](https://crates.io/crates/deno_cache_dir)
 [![Discord Chat](https://img.shields.io/discord/684898665143206084?logo=discord&style=social)](https://discord.gg/deno)
 
-A TypeScript implementation of the DENO_DIR/cache for the Deno CLI.
+Implementation of the DENO_DIR/cache for the Deno CLI.
 
-This is designed to provide access to the cache using very similar logic to the
-way that the Deno CLI accesses the cache, which allows items like
+This is designed to provide access to the cache using the same logic that the
+Deno CLI accesses the cache, which allows items like
 [`deno_graph`](https://deno.land/x/deno_graph),
 [`deno_doc`](https://deno.land/x/deno_doc), [`dnt`](https://deno.land/x/dnt),
-`deno_check`, and [`emit`](https://deno.land/x/deno_emit) to access and populate
-the cache in the same way that the CLI does.
+and [`emit`](https://deno.land/x/deno_emit) to access and populate the cache in
+the same way that the CLI does.
 
 ## Permissions
 
@@ -54,10 +55,6 @@ const graph = await createGraph("https://deno.land/x/oak@v9.0.1/mod.ts", {
 // log out the console a similar output to `deno info` on the command line.
 console.log(graph.toString());
 ```
-
----
-
-Copyright 2018-2022 the Deno authors. All rights reserved. MIT License.
 
 [Build Status - Cirrus]: https://github.com/denoland/deno_cache/workflows/ci/badge.svg?branch=main&event=push
 [Build status]: https://github.com/denoland/deno_cache/actions

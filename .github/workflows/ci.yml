@@ -18,24 +18,34 @@ jobs:
       GH_ACTIONS: 1
 
     steps:
-      - name: ☑️ clone repository
+      - name: Clone repository
         uses: actions/checkout@v2
 
-      - name: ➡️  install Deno
+      - name: Install rust
+        uses: dsherret/rust-toolchain-file@v1
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
           deno-version: 1.x
 
-      - name: 💄  format
+      - name: Format
         if: contains(matrix.os, 'ubuntu')
         run: |
           deno fmt --check
+          cargo fmt --check
 
-      - name: 💄  lint
+      - name: Lint
         if: contains(matrix.os, 'ubuntu')
         run: |
           deno lint
+          cargo clippy
 
-      - name: 🧪  test
+      - name: Test
         run: |
           deno task test
+          cargo test

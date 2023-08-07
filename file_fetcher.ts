@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 import { AuthTokens } from "./auth_tokens.ts";
-import { colors, fromFileUrl, readAll } from "./deps.ts";
+import { colors, fromFileUrl } from "./deps.ts";
 import type { LoadResponse } from "./deps.ts";
 import type { HttpCache } from "./http_cache.ts";
 
@@ -87,8 +87,6 @@ async function fetchLocal(specifier: URL): Promise<LoadResponse | undefined> {
   }
 }
 
-const decoder = new TextDecoder();
-
 export class FileFetcher {
   #allowRemote: boolean;
   #authTokens: AuthTokens;
@@ -145,20 +143,19 @@ export class FileFetcher {
       );
     }
 
-    const cached = await this.#httpCache.get(specifier);
-    if (!cached) {
+    const headers = await this.#httpCache.getHeaders(specifier);
+    if (!headers) {
       return undefined;
     }
-    const [file, headers] = cached;
     const location = headers["location"];
-    if (location) {
+    if (location != null && location.length > 0) {
       const redirect = new URL(location, specifier);
-      file.close();
       return this.#fetchCached(redirect, redirectLimit - 1);
     }
-    const bytes = await readAll(file);
-    file.close();
-    const content = decoder.decode(bytes);
+    const content = await this.#httpCache.getText(specifier);
+    if (content == null) {
+      return undefined;
+    }
     return {
       kind: "module",
       specifier: specifier.toString(),
@@ -191,19 +188,18 @@ export class FileFetcher {
     }
 
     const requestHeaders = new Headers();
-    const cached = await this.#httpCache.get(specifier);
-    if (cached) {
-      const [file, cachedHeaders] = cached;
-      file.close();
-      if (cachedHeaders["etag"]) {
-        requestHeaders.append("if-none-match", cachedHeaders["etag"]);
+    const cachedHeaders = await this.#httpCache.getHeaders(specifier);
+    if (cachedHeaders) {
+      const etag = cachedHeaders["etag"];
+      if (etag != null && etag.length > 0) {
+        requestHeaders.append("if-none-match", etag);
       }
     }
     const authToken = this.#authTokens.get(specifier);
     if (authToken) {
       requestHeaders.append("authorization", authToken);
     }
-    console.log(`${colors.green("Download")} ${specifier.toString()}`);
+    console.error(`${colors.green("Download")} ${specifier.toString()}`);
     const response = await fetch(specifier.toString(), {
       headers: requestHeaders,
     });
@@ -237,14 +233,15 @@ export class FileFetcher {
 
   async fetch(specifier: URL): Promise<LoadResponse | undefined> {
     const scheme = getValidatedScheme(specifier);
+    if (scheme === "file:") {
+      return fetchLocal(specifier);
+    }
     const response = this.#cache.get(specifier.toString());
     if (response) {
       return response;
-    } else if (scheme === "file:") {
-      return fetchLocal(specifier);
     } else if (scheme === "data:" || scheme === "blob:") {
       const response = await this.#fetchBlobDataUrl(specifier);
-      this.#cache.set(specifier.toString(), response);
+      await this.#cache.set(specifier.toString(), response);
       return response;
     } else if (!this.#allowRemote) {
       throw new Deno.errors.PermissionDenied(
@@ -253,7 +250,7 @@ export class FileFetcher {
     } else {
       const response = await this.#fetchRemote(specifier, 10);
       if (response) {
-        this.#cache.set(specifier.toString(), response);
+        await this.#cache.set(specifier.toString(), response);
       }
       return response;
     }
