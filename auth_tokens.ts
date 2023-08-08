@@ -28,7 +28,7 @@ export function splitLast(
 
 function tokenAsValue(authToken: AuthToken): string {
   return authToken.type === "basic"
-    ? `Basic ${authToken.username}:${authToken.password}`
+    ? `Basic ${btoa(`${authToken.username}:${authToken.password}`)}`
     : `Bearer ${authToken.token}`;
 }
 
@@ -38,9 +38,9 @@ export class AuthTokens {
     const tokens: AuthToken[] = [];
     for (const tokenStr of tokensStr.split(";").filter((s) => s.length > 0)) {
       if (tokensStr.includes("@")) {
-        const [host, token] = splitLast(tokenStr, "@");
+        const [token, host] = splitLast(tokenStr, "@");
         if (token.includes(":")) {
-          const [password, username] = splitLast(token, ":");
+          const [username, password] = splitLast(token, ":");
           tokens.push({ type: "basic", host, username, password });
         } else {
           tokens.push({ type: "bearer", host, token });
