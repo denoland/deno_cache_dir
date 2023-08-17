@@ -80,5 +80,5 @@ export function is_file(path) {
 
 export function time_now() {
   const msToS = 1000;
-  return Date.now() * msToS;
+  return Math.round(Date.now() / msToS);
 }
