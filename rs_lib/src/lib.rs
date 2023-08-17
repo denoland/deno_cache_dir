@@ -6,9 +6,9 @@ mod global;
 mod local;
 
 pub use cache::CachedUrlMetadata;
-pub use cache::SerializedCachedUrlMetadata;
 pub use cache::HttpCache;
 pub use cache::HttpCacheItemKey;
+pub use cache::SerializedCachedUrlMetadata;
 pub use common::DenoCacheEnv;
 pub use global::url_to_filename;
 pub use global::GlobalHttpCache;

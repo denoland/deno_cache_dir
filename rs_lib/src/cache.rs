@@ -113,7 +113,10 @@ mod test {
     assert_eq!(
       data,
       SerializedCachedUrlMetadata {
-        headers: HeadersMap::from([("content-type".to_string(), "application/javascript".to_string())]),
+        headers: HeadersMap::from([(
+          "content-type".to_string(),
+          "application/javascript".to_string()
+        )]),
         time: None,
         url: "https://deno.land/std/http/file_server.ts".to_string(),
       }
