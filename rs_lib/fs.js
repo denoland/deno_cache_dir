@@ -58,8 +58,7 @@ export function atomic_write_file(path, bytes) {
 export function modified_time(path) {
   try {
     const stat = Deno.lstatSync(path);
-    const msToS = 1000;
-    return stat.mtime.getTime() * msToS;
+    return msToS(stat.mtime.getTime());
   } catch (err) {
     if (err instanceof Deno.errors.NotFound) {
       return undefined;
@@ -79,6 +78,9 @@ export function is_file(path) {
 }
 
 export function time_now() {
-  const msToS = 1000;
-  return Math.round(Date.now() / msToS);
+  return msToS(Date.now());
+}
+
+function msToS(ms) {
+  return Math.round(ms / 1000);
 }
