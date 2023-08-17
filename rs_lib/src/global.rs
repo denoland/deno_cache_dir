@@ -13,6 +13,7 @@ use super::cache::HttpCache;
 use super::cache::HttpCacheItemKey;
 use super::common::base_url_to_filename_parts;
 use super::common::DenoCacheEnv;
+use crate::cache::SerializedCachedUrlMetadata;
 use crate::common::checksum;
 use crate::common::HeadersMap;
 
@@ -143,7 +144,7 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
       url: url.to_string(),
       headers,
     };
-    write_metadata(&self.env, &cache_filepath, &metadata)?;
+    write_metadata(&self.env, &cache_filepath, metadata)?;
 
     Ok(())
   }
@@ -168,7 +169,10 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
     let path = self.key_file_path(key).with_extension("metadata.json");
     let bytes = self.env.read_file_bytes(&path)?;
     Ok(match bytes {
-      Some(metadata) => Some(serde_json::from_slice(&metadata)?),
+      Some(metadata) => Some(
+        serde_json::from_slice::<SerializedCachedUrlMetadata>(&metadata)?
+          .into_cached_url_metadata(&self.env),
+      ),
       None => None,
     })
   }
@@ -177,10 +181,10 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
 fn write_metadata<Env: DenoCacheEnv>(
   env: &Env,
   path: &Path,
-  meta_data: &CachedUrlMetadata,
+  meta_data: CachedUrlMetadata,
 ) -> Result<(), AnyError> {
   let path = path.with_extension("metadata.json");
-  let json = serde_json::to_string_pretty(meta_data)?;
+  let json = serde_json::to_string_pretty(&meta_data.into_serialized())?;
   env.atomic_write_file(&path, json.as_bytes())?;
   Ok(())
 }
