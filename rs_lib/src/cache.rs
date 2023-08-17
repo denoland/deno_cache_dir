@@ -8,19 +8,49 @@ use std::time::SystemTime;
 use url::Url;
 
 use crate::common::HeadersMap;
+use crate::DenoCacheEnv;
 
-/// Cached metadata about a url.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct CachedUrlMetadata {
+pub struct SerializedCachedUrlMetadata {
   pub headers: HeadersMap,
   pub url: String,
   #[serde(rename = "now")]
+  pub time: Option<SystemTime>,
+}
+
+impl SerializedCachedUrlMetadata {
+  pub fn into_cached_url_metadata(
+    self,
+    env: &impl DenoCacheEnv,
+  ) -> CachedUrlMetadata {
+    let time = self.time.unwrap_or_else(|| env.time_now());
+    CachedUrlMetadata {
+      headers: self.headers,
+      url: self.url,
+      time,
+    }
+  }
+}
+
+/// Cached metadata about a url.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CachedUrlMetadata {
+  pub headers: HeadersMap,
+  pub url: String,
   pub time: SystemTime,
 }
 
 impl CachedUrlMetadata {
   pub fn is_redirect(&self) -> bool {
     self.headers.contains_key("location")
+  }
+
+  pub fn into_serialized(self) -> SerializedCachedUrlMetadata {
+    SerializedCachedUrlMetadata {
+      headers: self.headers,
+      url: self.url,
+      time: Some(self.time),
+    }
   }
 }
 
@@ -65,4 +95,31 @@ pub trait HttpCache: Send + Sync + std::fmt::Debug {
     &self,
     key: &HttpCacheItemKey,
   ) -> Result<Option<CachedUrlMetadata>, AnyError>;
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn deserialized_no_now() {
+    let json = r#"{
+      "headers": {
+        "content-type": "application/javascript"
+      },
+      "url": "https://deno.land/std/http/file_server.ts"
+    }"#;
+    let data: SerializedCachedUrlMetadata = serde_json::from_str(json).unwrap();
+    assert_eq!(
+      data,
+      SerializedCachedUrlMetadata {
+        headers: HeadersMap::from([(
+          "content-type".to_string(),
+          "application/javascript".to_string()
+        )]),
+        time: None,
+        url: "https://deno.land/std/http/file_server.ts".to_string(),
+      }
+    );
+  }
 }
