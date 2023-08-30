@@ -26,9 +26,9 @@ function shouldUseCache(cacheSetting: CacheSetting, specifier: URL): boolean {
     case "only":
     case "use":
       return true;
-    case "reload":
     // @ts-ignore old setting
     case "reloadAll":
+    case "reload":
       return false;
     default: {
       const specifierStr = specifier.toString();
