@@ -108,7 +108,10 @@ export class FileFetcher {
     this.#httpCache = httpCache;
   }
 
-  async #fetchBlobDataUrl(specifier: URL, cacheSetting: CacheSetting): Promise<LoadResponse> {
+  async #fetchBlobDataUrl(
+    specifier: URL,
+    cacheSetting: CacheSetting,
+  ): Promise<LoadResponse> {
     const cached = await this.#fetchCached(specifier, 0);
     if (cached) {
       return cached;
@@ -236,7 +239,7 @@ export class FileFetcher {
 
   async fetch(
     specifier: URL,
-    options?: { cacheSetting?: CacheSetting }
+    options?: { cacheSetting?: CacheSetting },
   ): Promise<LoadResponse | undefined> {
     const cacheSetting = options?.cacheSetting ?? this.#cacheSetting;
     const scheme = getValidatedScheme(specifier);
