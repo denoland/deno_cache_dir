@@ -14,18 +14,20 @@ import type { HttpCache } from "./http_cache.ts";
  *    the cache will error.
  * - `"use"` - the cache will be used, meaning existing remote files will not be
  *    reloaded.
- * - `"reloadAll"` - any cached modules will be ignored and their values will be
+ * - `"reload"` - any cached modules will be ignored and their values will be
  *    fetched.
  * - `string[]` - an array of string specifiers, that if they match the start of
  *    the requested specifier, will be reloaded.
  */
-export type CacheSetting = "only" | "reloadAll" | "use" | string[];
+export type CacheSetting = "only" | "reload" | "use" | string[];
 
 function shouldUseCache(cacheSetting: CacheSetting, specifier: URL): boolean {
   switch (cacheSetting) {
     case "only":
     case "use":
       return true;
+    case "reload":
+    // @ts-ignore old setting
     case "reloadAll":
       return false;
     default: {
@@ -106,13 +108,13 @@ export class FileFetcher {
     this.#httpCache = httpCache;
   }
 
-  async #fetchBlobDataUrl(specifier: URL): Promise<LoadResponse> {
+  async #fetchBlobDataUrl(specifier: URL, cacheSetting: CacheSetting): Promise<LoadResponse> {
     const cached = await this.#fetchCached(specifier, 0);
     if (cached) {
       return cached;
     }
 
-    if (this.#cacheSetting === "only") {
+    if (cacheSetting === "only") {
       throw new Deno.errors.NotFound(
         `Specifier not found in cache: "${specifier.toString()}", --cached-only is specified.`,
       );
@@ -167,6 +169,7 @@ export class FileFetcher {
   async #fetchRemote(
     specifier: URL,
     redirectLimit: number,
+    cacheSetting: CacheSetting,
   ): Promise<LoadResponse | undefined> {
     if (redirectLimit < 0) {
       throw new Deno.errors.Http(
@@ -174,14 +177,14 @@ export class FileFetcher {
       );
     }
 
-    if (shouldUseCache(this.#cacheSetting, specifier)) {
+    if (shouldUseCache(cacheSetting, specifier)) {
       const response = await this.#fetchCached(specifier, redirectLimit);
       if (response) {
         return response;
       }
     }
 
-    if (this.#cacheSetting === "only") {
+    if (cacheSetting === "only") {
       throw new Deno.errors.NotFound(
         `Specifier not found in cache: "${specifier.toString()}", --cached-only is specified.`,
       );
@@ -231,7 +234,11 @@ export class FileFetcher {
     };
   }
 
-  async fetch(specifier: URL): Promise<LoadResponse | undefined> {
+  async fetch(
+    specifier: URL,
+    options?: { cacheSetting?: CacheSetting }
+  ): Promise<LoadResponse | undefined> {
+    const cacheSetting = options?.cacheSetting ?? this.#cacheSetting;
     const scheme = getValidatedScheme(specifier);
     if (scheme === "file:") {
       return fetchLocal(specifier);
@@ -240,7 +247,7 @@ export class FileFetcher {
     if (response) {
       return response;
     } else if (scheme === "data:" || scheme === "blob:") {
-      const response = await this.#fetchBlobDataUrl(specifier);
+      const response = await this.#fetchBlobDataUrl(specifier, cacheSetting);
       await this.#cache.set(specifier.toString(), response);
       return response;
     } else if (!this.#allowRemote) {
@@ -248,7 +255,7 @@ export class FileFetcher {
         `A remote specifier was requested: "${specifier.toString()}", but --no-remote is specified.`,
       );
     } else {
-      const response = await this.#fetchRemote(specifier, 10);
+      const response = await this.#fetchRemote(specifier, 10, cacheSetting);
       if (response) {
         await this.#cache.set(specifier.toString(), response);
       }
