@@ -49,7 +49,11 @@ export interface Loader {
   /** A function that can be passed to a `deno_graph` that will load and cache
    * dependencies in the graph in the disk cache.
    */
-  load(specifier: string, _isDynamic?: boolean, cacheSetting?: CacheSetting): Promise<LoadResponse | undefined>;
+  load(
+    specifier: string,
+    _isDynamic?: boolean,
+    cacheSetting?: CacheSetting,
+  ): Promise<LoadResponse | undefined>;
 }
 
 export interface CacheOptions {
