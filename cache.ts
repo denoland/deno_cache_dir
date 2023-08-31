@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 import type { LoadResponse } from "./deps.ts";
-import type { FileFetcher } from "./file_fetcher.ts";
+import type { CacheSetting, FileFetcher } from "./file_fetcher.ts";
 
 /** Provides an interface to Deno's CLI cache.
  *
@@ -13,8 +13,13 @@ export class FetchCacher {
     this.#fileFetcher = fileFetcher;
   }
 
-  load = (specifier: string): Promise<LoadResponse | undefined> => {
+  // this should have the same interface as deno_graph's loader
+  load = (
+    specifier: string,
+    _isDynamic?: boolean,
+    cacheSetting?: CacheSetting,
+  ): Promise<LoadResponse | undefined> => {
     const url = new URL(specifier);
-    return this.#fileFetcher.fetch(url);
+    return this.#fileFetcher.fetch(url, { cacheSetting });
   };
 }
