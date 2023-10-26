@@ -210,7 +210,9 @@ impl<Env: DenoCacheEnv> LocalHttpCache<Env> {
       url_to_local_sub_path(url, headers_content_type(&metadata.headers))?;
 
     if !metadata.is_redirect() {
-      let Some(cached_bytes) = self.global_cache.read_file_bytes(&global_key)? else {
+      let Some(cached_bytes) =
+        self.global_cache.read_file_bytes(&global_key)?
+      else {
         return Ok(false);
       };
 
@@ -467,8 +469,11 @@ fn url_to_local_sub_path(
 
   // get the base url
   let port_separator = "_"; // make this shorter with just an underscore
-  let Some(mut base_parts) = base_url_to_filename_parts(url, port_separator) else {
-    return Err(UrlToFilenameConversionError { url: url.to_string() });
+  let Some(mut base_parts) = base_url_to_filename_parts(url, port_separator)
+  else {
+    return Err(UrlToFilenameConversionError {
+      url: url.to_string(),
+    });
   };
 
   if base_parts[0] == "https" {

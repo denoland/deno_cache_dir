@@ -32,7 +32,9 @@ pub fn url_to_filename(
   url: &Url,
 ) -> Result<PathBuf, UrlToFilenameConversionError> {
   let Some(mut cache_filename) = base_url_to_filename(url) else {
-    return Err(UrlToFilenameConversionError { url: url.to_string() });
+    return Err(UrlToFilenameConversionError {
+      url: url.to_string(),
+    });
   };
 
   let mut rest_str = url.path().to_string();
@@ -114,7 +116,7 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
 
   fn contains(&self, url: &Url) -> bool {
     let Ok(cache_filepath) = self.get_cache_filepath(url) else {
-      return false
+      return false;
     };
     self.env.is_file(&cache_filepath)
   }
