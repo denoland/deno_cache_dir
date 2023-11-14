@@ -267,7 +267,10 @@ export class FileFetcher {
   }
 }
 
-export async function fetchWithRetries(url: URL | string, init?: { headers?: Headers }) {
+export async function fetchWithRetries(
+  url: URL | string,
+  init?: { headers?: Headers },
+) {
   const maxRetries = 3;
   let sleepMs = 250;
   let iterationCount = 0;
@@ -283,7 +286,11 @@ export async function fetchWithRetries(url: URL | string, init?: { headers?: Hea
         throw err;
       }
     }
-    console.warn(`${colors.yellow("WARN")} Failed fetching ${url}. Retrying in ${sleepMs}ms...`);
+    console.warn(
+      `${
+        colors.yellow("WARN")
+      } Failed fetching ${url}. Retrying in ${sleepMs}ms...`,
+    );
     await new Promise((resolve) => setTimeout(resolve, sleepMs));
     sleepMs = Math.min(sleepMs * 2, 10_000);
   }
