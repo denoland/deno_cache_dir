@@ -123,7 +123,7 @@ export class FileFetcher {
       );
     }
 
-    const response = await fetch(specifier.toString());
+    const response = await fetchWithRetries(specifier.toString());
     const content = await response.text();
     const headers: Record<string, string> = {};
     for (const [key, value] of response.headers) {
@@ -206,7 +206,7 @@ export class FileFetcher {
       requestHeaders.append("authorization", authToken);
     }
     console.error(`${colors.green("Download")} ${specifier.toString()}`);
-    const response = await fetch(specifier.toString(), {
+    const response = await fetchWithRetries(specifier.toString(), {
       headers: requestHeaders,
     });
     if (!response.ok) {
@@ -264,5 +264,34 @@ export class FileFetcher {
       }
       return response;
     }
+  }
+}
+
+export async function fetchWithRetries(
+  url: URL | string,
+  init?: { headers?: Headers },
+) {
+  const maxRetries = 3;
+  let sleepMs = 250;
+  let iterationCount = 0;
+  while (true) {
+    iterationCount++;
+    try {
+      const res = await fetch(url, init);
+      if (res.ok || iterationCount > maxRetries) {
+        return res;
+      }
+    } catch (err) {
+      if (iterationCount > maxRetries) {
+        throw err;
+      }
+    }
+    console.warn(
+      `${
+        colors.yellow("WARN")
+      } Failed fetching ${url}. Retrying in ${sleepMs}ms...`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, sleepMs));
+    sleepMs = Math.min(sleepMs * 2, 10_000);
   }
 }
