@@ -65,6 +65,24 @@ function getValidatedScheme(specifier: URL) {
   return scheme as SupportedSchemes;
 }
 
+function hasHashbang(value: Uint8Array): boolean {
+  return value[0] === 35 /* # */ && value[1] === 33 /* ! */;
+}
+
+function stripHashbang(value: Uint8Array): string | Uint8Array {
+  if (hasHashbang(value)) {
+    const text = new TextDecoder().decode(value);
+    const lineIndex = text.indexOf("\n");
+    if (lineIndex > 0) {
+      return text.slice(lineIndex + 1);
+    } else {
+      return value;
+    }
+  } else {
+    return value;
+  }
+}
+
 async function fetchLocal(specifier: URL): Promise<LoadResponse | undefined> {
   const local = fromFileUrl(specifier);
   if (!local) {
@@ -73,7 +91,7 @@ async function fetchLocal(specifier: URL): Promise<LoadResponse | undefined> {
     );
   }
   try {
-    const content = await Deno.readFile(local);
+    const content = stripHashbang(await Deno.readFile(local));
     return {
       kind: "module",
       content,
