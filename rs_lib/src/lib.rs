@@ -25,7 +25,7 @@ pub mod wasm {
   use std::time::SystemTime;
 
   use js_sys::Uint8Array;
-use url::Url;
+  use url::Url;
   use wasm_bindgen::prelude::*;
 
   use crate::CachedUrlMetadata;
@@ -210,10 +210,10 @@ use url::Url;
     inner(cache, url)
       .map(|text| match text {
         Some(bytes) => {
-          let mut array = Uint8Array::new_with_length(bytes.len() as u32);
+          let array = Uint8Array::new_with_length(bytes.len() as u32);
           array.copy_from(&bytes);
           JsValue::from(array)
-        },
+        }
         None => JsValue::undefined(),
       })
       .map_err(as_js_error)

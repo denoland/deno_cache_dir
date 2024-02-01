@@ -223,7 +223,7 @@ export class FileFetcher {
     for (const [key, value] of response.headers) {
       headers[key.toLowerCase()] = value;
     }
-    await this.#httpCache.set(url, headers,content);
+    await this.#httpCache.set(url, headers, content);
     return {
       kind: "module",
       specifier: response.url,
