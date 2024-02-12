@@ -14,14 +14,13 @@ wasm = ["console_error_panic_hook", "js-sys", "serde-wasm-bindgen", "wasm-bindge
 [dependencies]
 anyhow = "1.0.72"
 deno_media_type = "0.1.1"
-getrandom = { version = "*", features = ["js"] }
 indexmap = { version = "2.0.0", features = ["serde"] }
 log = "0.4.19"
 once_cell = "1.18.0"
 parking_lot = "0.12.1"
-ring = "^0.17.0"
 serde = "1.0.183"
 serde_json = "1.0.104"
+sha2 = "^0.10.0"
 thiserror = "1.0.44"
 url = { version = "2.3.1", features = ["serde"] }
 
