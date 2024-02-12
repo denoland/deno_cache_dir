@@ -65,8 +65,22 @@ function getValidatedScheme(specifier: URL) {
   return scheme as SupportedSchemes;
 }
 
-export function stripHashbang(value: string): string {
-  return value.startsWith("#!") ? value.slice(value.indexOf("\n")) : value;
+function hasHashbang(value: Uint8Array): boolean {
+  return value[0] === 35 /* # */ && value[1] === 33 /* ! */;
+}
+
+function stripHashbang(value: Uint8Array): string | Uint8Array {
+  if (hasHashbang(value)) {
+    const text = new TextDecoder().decode(value);
+    const lineIndex = text.indexOf("\n");
+    if (lineIndex > 0) {
+      return text.slice(lineIndex + 1);
+    } else {
+      return value;
+    }
+  } else {
+    return value;
+  }
 }
 
 async function fetchLocal(specifier: URL): Promise<LoadResponse | undefined> {
@@ -77,8 +91,7 @@ async function fetchLocal(specifier: URL): Promise<LoadResponse | undefined> {
     );
   }
   try {
-    const source = await Deno.readTextFile(local);
-    const content = stripHashbang(source);
+    const content = stripHashbang(await Deno.readFile(local));
     return {
       kind: "module",
       content,
@@ -124,7 +137,7 @@ export class FileFetcher {
     }
 
     const response = await fetchWithRetries(specifier.toString());
-    const content = await response.text();
+    const content = new Uint8Array(await response.arrayBuffer());
     const headers: Record<string, string> = {};
     for (const [key, value] of response.headers) {
       headers[key.toLowerCase()] = value;
@@ -157,7 +170,7 @@ export class FileFetcher {
       const redirect = new URL(location, specifier);
       return this.#fetchCached(redirect, redirectLimit - 1);
     }
-    const content = await this.#httpCache.getText(specifier);
+    const content = await this.#httpCache.get(specifier);
     if (content == null) {
       return undefined;
     }
@@ -220,10 +233,10 @@ export class FileFetcher {
     // determine if that occurred and cache the value.
     if (specifier.toString() !== response.url) {
       const headers = { "location": response.url };
-      await this.#httpCache.set(specifier, headers, "");
+      await this.#httpCache.set(specifier, headers, new Uint8Array());
     }
     const url = new URL(response.url);
-    const content = await response.text();
+    const content = new Uint8Array(await response.arrayBuffer());
     const headers: Record<string, string> = {};
     for (const [key, value] of response.headers) {
       headers[key.toLowerCase()] = value;

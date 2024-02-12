@@ -24,6 +24,7 @@ pub mod wasm {
   use std::sync::Arc;
   use std::time::SystemTime;
 
+  use js_sys::Uint8Array;
   use url::Url;
   use wasm_bindgen::prelude::*;
 
@@ -116,9 +117,9 @@ pub mod wasm {
       get_headers(&self.cache, url)
     }
 
-    #[wasm_bindgen(js_name = getFileText)]
-    pub fn get_file_text(&self, url: &str) -> Result<JsValue, JsValue> {
-      get_file_text(&self.cache, url)
+    #[wasm_bindgen(js_name = getFileBytes)]
+    pub fn get_file_bytes(&self, url: &str) -> Result<JsValue, JsValue> {
+      get_file_bytes(&self.cache, url)
     }
 
     pub fn set(
@@ -152,9 +153,9 @@ pub mod wasm {
       get_headers(&self.cache, url)
     }
 
-    #[wasm_bindgen(js_name = getFileText)]
-    pub fn get_file_text(&self, url: &str) -> Result<JsValue, JsValue> {
-      get_file_text(&self.cache, url)
+    #[wasm_bindgen(js_name = getFileBytes)]
+    pub fn get_file_bytes(&self, url: &str) -> Result<JsValue, JsValue> {
+      get_file_bytes(&self.cache, url)
     }
 
     pub fn set(
@@ -190,25 +191,29 @@ pub mod wasm {
       .map_err(as_js_error)
   }
 
-  fn get_file_text<Cache: HttpCache>(
+  fn get_file_bytes<Cache: HttpCache>(
     cache: &Cache,
     url: &str,
   ) -> Result<JsValue, JsValue> {
     fn inner<Cache: HttpCache>(
       cache: &Cache,
       url: &str,
-    ) -> anyhow::Result<Option<String>> {
+    ) -> anyhow::Result<Option<Vec<u8>>> {
       let url = Url::parse(url)?;
       let key = cache.cache_item_key(&url)?;
       match cache.read_file_bytes(&key)? {
-        Some(bytes) => Ok(Some(String::from_utf8(bytes)?)),
+        Some(bytes) => Ok(Some(bytes)),
         None => Ok(None),
       }
     }
 
     inner(cache, url)
       .map(|text| match text {
-        Some(text) => JsValue::from(text),
+        Some(bytes) => {
+          let array = Uint8Array::new_with_length(bytes.len() as u32);
+          array.copy_from(&bytes);
+          JsValue::from(array)
+        }
         None => JsValue::undefined(),
       })
       .map_err(as_js_error)

@@ -58,17 +58,17 @@ export class HttpCache {
     return map == null ? undefined : Object.fromEntries(map);
   }
 
-  async getText(
+  async get(
     url: URL,
-  ): Promise<string | undefined> {
-    const data = (await this.#ensureCache()).getFileText(url.toString());
+  ): Promise<Uint8Array | undefined> {
+    const data = (await this.#ensureCache()).getFileBytes(url.toString());
     return data == null ? undefined : data;
   }
 
   async set(
     url: URL,
     headers: Record<string, string>,
-    content: string,
+    content: Uint8Array,
   ): Promise<void> {
     if (this.#readOnly === undefined) {
       this.#readOnly =
@@ -82,7 +82,7 @@ export class HttpCache {
     (await this.#ensureCache()).set(
       url.toString(),
       headers,
-      new TextEncoder().encode(content),
+      content,
     );
   }
 }

@@ -12,7 +12,7 @@ Deno.test({
     const deps = denoDir.createHttpCache();
     const headers = (await deps.getHeaders(url))!;
     assert(Object.keys(headers).length > 10);
-    const text = (await deps.getText(url))!;
+    const text = new TextDecoder().decode(await deps.get(url));
     assertEquals(
       text,
       `// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
