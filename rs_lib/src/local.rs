@@ -417,7 +417,7 @@ fn url_to_local_sub_path(
   fn short_hash(data: &str, last_ext: Option<&str>) -> String {
     // This function is a bit of a balancing act between readability
     // and avoiding collisions.
-    let hash = checksum(&[data.as_bytes()]);
+    let hash = checksum(data.as_bytes());
     // keep the paths short because of windows path limit
     const MAX_LENGTH: usize = 20;
     let mut sub = String::with_capacity(MAX_LENGTH);

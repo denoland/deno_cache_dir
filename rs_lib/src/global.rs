@@ -45,7 +45,7 @@ pub fn url_to_filename(
   // NOTE: fragment is omitted on purpose - it's not taken into
   // account when caching - it denotes parts of webpage, which
   // in case of static resources doesn't make much sense
-  let hashed_filename = checksum(&[rest_str.as_bytes()]);
+  let hashed_filename = checksum(rest_str.as_bytes());
   cache_filename.push(hashed_filename);
   Ok(cache_filename)
 }
