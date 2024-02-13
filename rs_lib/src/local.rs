@@ -198,55 +198,56 @@ impl<Env: DenoCacheEnv> LocalHttpCache<Env> {
     }
   }
 
-  /// Copies the file from the global cache to the local cache returning
-  /// if the data was successfully copied to the local cache.
-  fn check_copy_global_to_local(&self, url: &Url) -> Result<bool, AnyError> {
-    let global_key = self.global_cache.cache_item_key(url)?;
-    let Some(metadata) = self.global_cache.read_metadata(&global_key)? else {
-      return Ok(false);
-    };
-
-    let local_path =
-      url_to_local_sub_path(url, headers_content_type(&metadata.headers))?;
-
-    if !metadata.is_redirect() {
-      let Some(cached_bytes) =
-        self.global_cache.read_file_bytes(&global_key)?
-      else {
-        return Ok(false);
-      };
-
-      let local_file_path = local_path.as_path_from_root(&self.path);
-      // if we're here, then this will be set
-      self
-        .fs()
-        .atomic_write_file(&local_file_path, &cached_bytes)?;
-    }
-
-    self
-      .manifest
-      .insert_data(local_path, url.clone(), metadata.headers);
-
-    Ok(true)
-  }
-
   #[inline]
   fn fs(&self) -> &Env {
     &self.global_cache.env
   }
 
-  fn get_url_metadata_checking_global_cache(
+  fn get_url_metadata(
     &self,
     url: &Url,
   ) -> Result<Option<CachedUrlMetadata>, AnyError> {
     if let Some(metadata) = self.manifest.get_metadata(url) {
-      Ok(Some(metadata))
-    } else if self.check_copy_global_to_local(url)? {
-      // try again now that it's saved
-      Ok(self.manifest.get_metadata(url))
-    } else {
-      Ok(None)
+      return Ok(Some(metadata));
     }
+
+    // not found locally, so try to copy from the global manifest
+    let global_key = self.global_cache.cache_item_key(url)?;
+    let Some(metadata) = self.global_cache.read_metadata(&global_key)? else {
+      return Ok(None);
+    };
+
+    let local_path =
+      url_to_local_sub_path(url, headers_content_type(&metadata.headers))?;
+
+    self
+      .manifest
+      .insert_data(local_path, url.clone(), metadata.headers);
+
+    Ok(self.manifest.get_metadata(url).or_else(|| {
+      // if the metadata returns None, then that means the local file
+      // doesn't have a local manifest entry (no headers) and doesn't
+      // exist yet, so just return back the parts necessary from the
+      // global metadata
+      Some(CachedUrlMetadata {
+        headers: Default::default(),
+        time: metadata.time,
+        url: metadata.url,
+      })
+    }))
+  }
+
+  fn get_manifest_metadata(&self, url: &Url) -> Result<Option<CachedUrlMetadata>, AnyError> {
+    let Some((headers, local_file_path)) = self.manifest.get_headers_and_file_path(url) else {
+      return Ok(None);
+    };
+    let maybe_modified = self.fs().modified(&local_file_path)?;
+    let modified = match maybe_modified {
+      Some(modified) => modified,
+      None => {
+        
+      },
+    };
   }
 }
 
@@ -274,9 +275,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
     #[cfg(debug_assertions)]
     debug_assert!(key.is_local_key);
 
-    self
-      .get_url_metadata_checking_global_cache(key.url)
-      .map(|m| m.map(|m| m.time))
+    self.get_url_metadata(key.url).map(|m| m.map(|m| m.time))
   }
 
   fn set(
@@ -307,7 +306,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
     #[cfg(debug_assertions)]
     debug_assert!(key.is_local_key);
 
-    let metadata = self.get_url_metadata_checking_global_cache(key.url)?;
+    let metadata = self.get_url_metadata(key.url)?;
     match metadata {
       Some(data) => {
         if data.is_redirect() {
@@ -315,12 +314,24 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
           Ok(Some(Vec::new()))
         } else {
           // if it's not a redirect, then it should have a file path
-          let cache_file_path = url_to_local_sub_path(
+          let local_file_path = url_to_local_sub_path(
             key.url,
             headers_content_type(&data.headers),
           )?
           .as_path_from_root(&self.path);
-          Ok(self.fs().read_file_bytes(&cache_file_path)?)
+          let maybe_file_bytes = self.fs().read_file_bytes(&local_file_path)?;
+          match maybe_file_bytes {
+            Some(bytes) => Ok(Some(bytes)),
+            None => {
+              let global_key = self.global_cache.cache_item_key(key.url)?;
+              let maybe_file_bytes =
+                self.global_cache.read_file_bytes(&global_key)?;
+              if let Some(bytes) = &maybe_file_bytes {
+                self.fs().atomic_write_file(&local_file_path, bytes)?;
+              }
+              Ok(maybe_file_bytes)
+            }
+          }
         }
       }
       None => Ok(None),
@@ -334,7 +345,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
     #[cfg(debug_assertions)]
     debug_assert!(key.is_local_key);
 
-    self.get_url_metadata_checking_global_cache(key.url)
+    self.get_url_metadata(key.url)
   }
 }
 
@@ -648,7 +659,7 @@ impl<Env: DenoCacheEnv> LocalCacheManifest<Env> {
     }
   }
 
-  pub fn get_metadata(&self, url: &Url) -> Option<CachedUrlMetadata> {
+  pub fn get_headers_and_file_path(&self, url: &Url) -> Option<(HeadersMap, Cow<PathBuf>)> {
     let data = self.data.read();
     match data.get(url) {
       Some(module) => {
@@ -666,15 +677,7 @@ impl<Env: DenoCacheEnv> LocalCacheManifest<Env> {
           Cow::Owned(sub_path.as_path_from_root(folder_path))
         };
 
-        let Ok(Some(modified)) = self.env.modified(&sub_path) else {
-          return None;
-        };
-
-        Some(CachedUrlMetadata {
-          headers,
-          url: url.to_string(),
-          time: modified,
-        })
+        Some((headers, sub_path))
       }
       None => {
         let folder_path = self.file_path.parent().unwrap();
@@ -690,15 +693,7 @@ impl<Env: DenoCacheEnv> LocalCacheManifest<Env> {
           return None;
         }
         let file_path = sub_path.as_path_from_root(folder_path);
-        if let Ok(Some(modified)) = self.env.modified(&file_path) {
-          Some(CachedUrlMetadata {
-            headers: Default::default(),
-            url: url.to_string(),
-            time: modified,
-          })
-        } else {
-          None
-        }
+        Some((Default::default(), Cow::Owned(file_path)))
       }
     }
   }
