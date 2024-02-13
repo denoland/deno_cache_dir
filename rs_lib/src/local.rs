@@ -14,13 +14,15 @@ use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use url::Url;
 
-use crate::common::checksum;
-use crate::common::HeadersMap;
-use crate::DenoCacheEnv;
+use crate::cache::CacheReadFileError;
 
+use super::cache::UrlToFilenameConversionError;
 use super::common::base_url_to_filename_parts;
+use super::common::checksum;
+use super::common::HeadersMap;
 use super::global::GlobalHttpCache;
-use super::global::UrlToFilenameConversionError;
+use super::Checksum;
+use super::DenoCacheEnv;
 use super::HttpCache;
 use super::HttpCacheItemKey;
 
@@ -135,7 +137,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalLspHttpCache<Env> {
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
-  ) -> Result<HttpCacheItemKey<'a>, AnyError> {
+  ) -> Result<HttpCacheItemKey<'a>, UrlToFilenameConversionError> {
     self.cache.cache_item_key(url)
   }
 
@@ -162,8 +164,9 @@ impl<Env: DenoCacheEnv> HttpCache for LocalLspHttpCache<Env> {
   fn read_file_bytes(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<Vec<u8>>, AnyError> {
-    self.cache.read_file_bytes(key)
+    maybe_checksum: Option<Checksum>,
+  ) -> Result<Option<Vec<u8>>, CacheReadFileError> {
+    self.cache.read_file_bytes(key, maybe_checksum)
   }
 
   fn read_headers(
@@ -244,7 +247,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
-  ) -> Result<HttpCacheItemKey<'a>, AnyError> {
+  ) -> Result<HttpCacheItemKey<'a>, UrlToFilenameConversionError> {
     Ok(HttpCacheItemKey {
       #[cfg(debug_assertions)]
       is_local_key: true,
@@ -308,11 +311,14 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
   fn read_file_bytes(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<Vec<u8>>, AnyError> {
+    maybe_checksum: Option<Checksum>,
+  ) -> Result<Option<Vec<u8>>, CacheReadFileError> {
     #[cfg(debug_assertions)]
     debug_assert!(key.is_local_key);
 
-    let maybe_headers = self.get_url_headers(key.url)?;
+    let maybe_headers = self
+      .get_url_headers(key.url)
+      .map_err(CacheReadFileError::ReadHeaders)?;
     match maybe_headers {
       Some(headers) => {
         let is_redirect = headers.contains_key("location");
@@ -328,9 +334,11 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
           match maybe_file_bytes {
             Some(bytes) => Ok(Some(bytes)),
             None => {
+              // only check the checksum when copying from the global to the local cache
               let global_key = self.global_cache.cache_item_key(key.url)?;
-              let maybe_file_bytes =
-                self.global_cache.read_file_bytes(&global_key)?;
+              let maybe_file_bytes = self
+                .global_cache
+                .read_file_bytes(&global_key, maybe_checksum)?;
               if let Some(bytes) = &maybe_file_bytes {
                 self.fs().atomic_write_file(&local_file_path, bytes)?;
               }
