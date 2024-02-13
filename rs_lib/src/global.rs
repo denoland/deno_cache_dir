@@ -100,13 +100,16 @@ impl<Env: DenoCacheEnv> GlobalHttpCache<Env> {
     key.file_path.as_ref().unwrap()
   }
 
-  fn read_serialized_cache_metadata(&self, key: &HttpCacheItemKey) -> Result<Option<SerializedCachedUrlMetadata>, AnyError> {
+  fn read_serialized_cache_metadata(
+    &self,
+    key: &HttpCacheItemKey,
+  ) -> Result<Option<SerializedCachedUrlMetadata>, AnyError> {
     let path = self.key_file_path(key).with_extension("metadata.json");
     let bytes = self.env.read_file_bytes(&path)?;
     Ok(match bytes {
-      Some(metadata) => Some(
-        serde_json::from_slice::<SerializedCachedUrlMetadata>(&metadata)?
-      ),
+      Some(metadata) => Some(serde_json::from_slice::<
+        SerializedCachedUrlMetadata,
+      >(&metadata)?),
       None => None,
     })
   }
@@ -152,11 +155,15 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
     // Cache content
     self.env.atomic_write_file(&cache_filepath, content)?;
 
-    write_metadata(&self.env, &cache_filepath, &SerializedCachedUrlMetadata {
-      time: Some(self.env.time_now()),
-      url: url.to_string(),
-      headers,
-    })?;
+    write_metadata(
+      &self.env,
+      &cache_filepath,
+      &SerializedCachedUrlMetadata {
+        time: Some(self.env.time_now()),
+        url: url.to_string(),
+        headers,
+      },
+    )?;
 
     Ok(())
   }
@@ -178,14 +185,22 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
     #[cfg(debug_assertions)]
     debug_assert!(!key.is_local_key);
 
-    Ok(self.read_serialized_cache_metadata(key)?.map(|item| item.into_cached_url_metadata()))
+    Ok(
+      self
+        .read_serialized_cache_metadata(key)?
+        .map(|item| item.into_cached_url_metadata()),
+    )
   }
 
   fn read_metadata_time(
     &self,
     key: &HttpCacheItemKey,
   ) -> Result<Option<SystemTime>, AnyError> {
-    Ok(self.read_serialized_cache_metadata(key)?.and_then(|item| item.time))
+    Ok(
+      self
+        .read_serialized_cache_metadata(key)?
+        .and_then(|item| item.time),
+    )
   }
 }
 

@@ -18,9 +18,7 @@ pub struct SerializedCachedUrlMetadata {
 }
 
 impl SerializedCachedUrlMetadata {
-  pub fn into_cached_url_metadata(
-    self,
-  ) -> CachedUrlMetadata {
+  pub fn into_cached_url_metadata(self) -> CachedUrlMetadata {
     CachedUrlMetadata {
       headers: self.headers,
       url: self.url,
