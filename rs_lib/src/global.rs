@@ -104,8 +104,7 @@ impl<Env: DenoCacheEnv> GlobalHttpCache<Env> {
   fn read_serialized_cache_metadata<T: DeserializeOwned>(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<T>, AnyError>
-  {
+  ) -> Result<Option<T>, AnyError> {
     let path = self.key_file_path(key).with_extension("metadata.json");
     let bytes = self.env.read_file_bytes(&path)?;
     Ok(match bytes {

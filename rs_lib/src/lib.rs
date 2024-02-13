@@ -28,7 +28,7 @@ pub mod wasm {
   use wasm_bindgen::prelude::*;
 
   use crate::common::HeadersMap;
-use crate::DenoCacheEnv;
+  use crate::DenoCacheEnv;
   use crate::HttpCache;
 
   #[wasm_bindgen(module = "/fs.js")]
@@ -182,9 +182,7 @@ use crate::DenoCacheEnv;
 
     inner(cache, url)
       .map(|headers| match headers {
-        Some(headers) => {
-          serde_wasm_bindgen::to_value(&headers).unwrap()
-        }
+        Some(headers) => serde_wasm_bindgen::to_value(&headers).unwrap(),
         None => JsValue::undefined(),
       })
       .map_err(as_js_error)

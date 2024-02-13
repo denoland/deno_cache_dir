@@ -208,10 +208,7 @@ impl<Env: DenoCacheEnv> LocalHttpCache<Env> {
     &self.global_cache.env
   }
 
-  fn get_url_headers(
-    &self,
-    url: &Url,
-  ) -> Result<Option<HeadersMap>, AnyError> {
+  fn get_url_headers(&self, url: &Url) -> Result<Option<HeadersMap>, AnyError> {
     if let Some(metadata) = self.manifest.get_stored_headers(url) {
       return Ok(Some(metadata));
     }
@@ -231,9 +228,7 @@ impl<Env: DenoCacheEnv> LocalHttpCache<Env> {
 
     let local_path =
       url_to_local_sub_path(url, headers_content_type(&headers))?;
-    self
-      .manifest
-      .insert_data(local_path, url.clone(), headers);
+    self.manifest.insert_data(local_path, url.clone(), headers);
 
     Ok(Some(self.manifest.get_stored_headers(url).unwrap_or_else(
       || {
@@ -274,10 +269,8 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
     debug_assert!(key.is_local_key);
 
     if let Some(headers) = self.get_url_headers(key.url)? {
-      let local_path = url_to_local_sub_path(
-        key.url,
-        headers_content_type(&headers),
-      )?;
+      let local_path =
+        url_to_local_sub_path(key.url, headers_content_type(&headers))?;
       if let Ok(Some(modified_time)) = self
         .fs()
         .modified(&local_path.as_path_from_root(&self.path))
@@ -328,11 +321,9 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
           Ok(Some(Vec::new()))
         } else {
           // if it's not a redirect, then it should have a file path
-          let local_file_path = url_to_local_sub_path(
-            key.url,
-            headers_content_type(&headers),
-          )?
-          .as_path_from_root(&self.path);
+          let local_file_path =
+            url_to_local_sub_path(key.url, headers_content_type(&headers))?
+              .as_path_from_root(&self.path);
           let maybe_file_bytes = self.fs().read_file_bytes(&local_file_path)?;
           match maybe_file_bytes {
             Some(bytes) => Ok(Some(bytes)),
