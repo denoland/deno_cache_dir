@@ -372,7 +372,10 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
     &self,
     key: &HttpCacheItemKey,
   ) -> Result<Option<SystemTime>, AnyError> {
-    // this will never be called for the local cache in practice
+    // This will never be called for the local cache in practice
+    // because only the LSP ever reads this time for telling if
+    // a file should be re-downloaded when respecting cache headers
+    // and it only does this using a global cache
     self.read_modified_time(key)
   }
 }
