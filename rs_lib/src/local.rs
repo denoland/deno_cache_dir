@@ -213,24 +213,40 @@ impl<Env: DenoCacheEnv> LocalHttpCache<Env> {
     &self,
     url: &Url,
   ) -> Result<Option<CachedUrlMetadata>, AnyError> {
-    if let Some(metadata) = self.manifest.get_metadata(url) {
+    if let Some(metadata) = self.manifest.get_stored_metadata(url) {
       return Ok(Some(metadata));
     }
 
     // not found locally, so try to copy from the global manifest
     let global_key = self.global_cache.cache_item_key(url)?;
     let Some(metadata) = self.global_cache.read_metadata(&global_key)? else {
-      return Ok(None);
+      // the user might have deleted their global cache, so check
+      // the local one for this URL with no headers
+      let local_path = url_to_local_sub_path(url, None)?;
+      if self.fs().is_file(&local_path.as_path_from_root(&self.path)) {
+        return Ok(Some(CachedUrlMetadata { 
+          url: url.to_string(),
+          headers: Default::default(),
+        }));
+      } else {
+        return Ok(None);
+      }
     };
 
     let local_path =
       url_to_local_sub_path(url, headers_content_type(&metadata.headers))?;
-
     self
       .manifest
       .insert_data(local_path, url.clone(), metadata.headers);
 
-    Ok(self.manifest.get_metadata(url))
+    Ok(Some(self.manifest.get_stored_metadata(url).unwrap_or_else(|| {
+      // if it's not in the stored metadata at this point then that means
+      // the file has no headers that need to be stored for the local cache
+      CachedUrlMetadata { 
+        url: url.to_string(),
+        headers: Default::default(),
+      }
+     })))
   }
 }
 
@@ -248,7 +264,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
   }
 
   fn contains(&self, url: &Url) -> bool {
-    self.manifest.get_metadata(url).is_some()
+    self.get_url_metadata(url).ok().map(|d| d.is_some()).unwrap_or(false)
   }
 
   fn read_modified_time(
@@ -258,7 +274,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
     #[cfg(debug_assertions)]
     debug_assert!(key.is_local_key);
 
-    if let Some(metadata) = self.manifest.get_metadata(key.url) {
+    if let Some(metadata) = self.get_url_metadata(key.url)? {
       let local_path =
         url_to_local_sub_path(key.url, headers_content_type(&metadata.headers))?;
       if let Ok(Some(modified_time)) = self.fs().modified(&local_path.as_path_from_root(&self.path)) {
@@ -660,39 +676,20 @@ impl<Env: DenoCacheEnv> LocalCacheManifest<Env> {
     }
   }
 
-  pub fn get_metadata(&self, url: &Url) -> Option<CachedUrlMetadata> {
+  pub fn get_stored_metadata(&self, url: &Url) -> Option<CachedUrlMetadata> {
     let data = self.data.read();
-    match data.get(url) {
-      Some(module) => {
+    data.get(url)
+      .map(|module| {
         let headers = module
           .headers
           .iter()
           .map(|(k, v)| (k.to_string(), v.to_string()))
           .collect::<HashMap<_, _>>();
-        Some(CachedUrlMetadata { 
+        CachedUrlMetadata { 
           url: url.to_string(),
           headers,
-        })
-      }
-      None => {
-        let sub_path = url_to_local_sub_path(url, None).ok()?;
-        if sub_path
-          .parts
-          .last()
-          .map(|s| s.starts_with('#'))
-          .unwrap_or(false)
-        {
-          // only filenames without a hash are considered as in the cache
-          // when they don't have a metadata entry
-          return None;
         }
-
-        Some(CachedUrlMetadata { 
-          url: url.to_string(),
-          headers: Default::default(),
-        })
-      }
-    }
+      })
   }
 }
 
