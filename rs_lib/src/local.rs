@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
@@ -22,7 +21,6 @@ use crate::DenoCacheEnv;
 use super::common::base_url_to_filename_parts;
 use super::global::GlobalHttpCache;
 use super::global::UrlToFilenameConversionError;
-use super::CachedUrlMetadata;
 use super::HttpCache;
 use super::HttpCacheItemKey;
 
@@ -168,11 +166,18 @@ impl<Env: DenoCacheEnv> HttpCache for LocalLspHttpCache<Env> {
     self.cache.read_file_bytes(key)
   }
 
-  fn read_metadata(
+  fn read_headers(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<CachedUrlMetadata>, AnyError> {
-    self.cache.read_metadata(key)
+  ) -> Result<Option<HeadersMap>, AnyError> {
+    self.cache.read_headers(key)
+  }
+
+  fn read_download_time(
+    &self,
+    key: &HttpCacheItemKey,
+  ) -> Result<Option<SystemTime>, AnyError> {
+    self.cache.read_modified_time(key)
   }
 }
 
@@ -198,55 +203,40 @@ impl<Env: DenoCacheEnv> LocalHttpCache<Env> {
     }
   }
 
-  /// Copies the file from the global cache to the local cache returning
-  /// if the data was successfully copied to the local cache.
-  fn check_copy_global_to_local(&self, url: &Url) -> Result<bool, AnyError> {
-    let global_key = self.global_cache.cache_item_key(url)?;
-    let Some(metadata) = self.global_cache.read_metadata(&global_key)? else {
-      return Ok(false);
-    };
-
-    let local_path =
-      url_to_local_sub_path(url, headers_content_type(&metadata.headers))?;
-
-    if !metadata.is_redirect() {
-      let Some(cached_bytes) =
-        self.global_cache.read_file_bytes(&global_key)?
-      else {
-        return Ok(false);
-      };
-
-      let local_file_path = local_path.as_path_from_root(&self.path);
-      // if we're here, then this will be set
-      self
-        .fs()
-        .atomic_write_file(&local_file_path, &cached_bytes)?;
-    }
-
-    self
-      .manifest
-      .insert_data(local_path, url.clone(), metadata.headers);
-
-    Ok(true)
-  }
-
   #[inline]
   fn fs(&self) -> &Env {
     &self.global_cache.env
   }
 
-  fn get_url_metadata_checking_global_cache(
-    &self,
-    url: &Url,
-  ) -> Result<Option<CachedUrlMetadata>, AnyError> {
-    if let Some(metadata) = self.manifest.get_metadata(url) {
-      Ok(Some(metadata))
-    } else if self.check_copy_global_to_local(url)? {
-      // try again now that it's saved
-      Ok(self.manifest.get_metadata(url))
-    } else {
-      Ok(None)
+  fn get_url_headers(&self, url: &Url) -> Result<Option<HeadersMap>, AnyError> {
+    if let Some(metadata) = self.manifest.get_stored_headers(url) {
+      return Ok(Some(metadata));
     }
+
+    // not found locally, so try to copy from the global manifest
+    let global_key = self.global_cache.cache_item_key(url)?;
+    let Some(headers) = self.global_cache.read_headers(&global_key)? else {
+      // the user might have deleted their global cache, so check
+      // the local one for this URL with no headers
+      let local_path = url_to_local_sub_path(url, None)?;
+      if self.fs().is_file(&local_path.as_path_from_root(&self.path)) {
+        return Ok(Some(Default::default()));
+      } else {
+        return Ok(None);
+      }
+    };
+
+    let local_path =
+      url_to_local_sub_path(url, headers_content_type(&headers))?;
+    self.manifest.insert_data(local_path, url.clone(), headers);
+
+    Ok(Some(self.manifest.get_stored_headers(url).unwrap_or_else(
+      || {
+        // if it's not in the stored headers at this point then that means
+        // the file has no headers that need to be stored for the local cache
+        Default::default()
+      },
+    )))
   }
 }
 
@@ -264,7 +254,11 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
   }
 
   fn contains(&self, url: &Url) -> bool {
-    self.manifest.get_metadata(url).is_some()
+    self
+      .get_url_headers(url)
+      .ok()
+      .map(|d| d.is_some())
+      .unwrap_or(false)
   }
 
   fn read_modified_time(
@@ -274,9 +268,20 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
     #[cfg(debug_assertions)]
     debug_assert!(key.is_local_key);
 
-    self
-      .get_url_metadata_checking_global_cache(key.url)
-      .map(|m| m.map(|m| m.time))
+    if let Some(headers) = self.get_url_headers(key.url)? {
+      let local_path =
+        url_to_local_sub_path(key.url, headers_content_type(&headers))?;
+      if let Ok(Some(modified_time)) = self
+        .fs()
+        .modified(&local_path.as_path_from_root(&self.path))
+      {
+        return Ok(Some(modified_time));
+      }
+    }
+
+    // fallback to the global cache
+    let global_key = self.global_cache.cache_item_key(key.url)?;
+    self.global_cache.read_modified_time(&global_key)
   }
 
   fn set(
@@ -307,34 +312,56 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
     #[cfg(debug_assertions)]
     debug_assert!(key.is_local_key);
 
-    let metadata = self.get_url_metadata_checking_global_cache(key.url)?;
-    match metadata {
-      Some(data) => {
-        if data.is_redirect() {
+    let maybe_headers = self.get_url_headers(key.url)?;
+    match maybe_headers {
+      Some(headers) => {
+        let is_redirect = headers.contains_key("location");
+        if is_redirect {
           // return back an empty file for redirect
           Ok(Some(Vec::new()))
         } else {
           // if it's not a redirect, then it should have a file path
-          let cache_file_path = url_to_local_sub_path(
-            key.url,
-            headers_content_type(&data.headers),
-          )?
-          .as_path_from_root(&self.path);
-          Ok(self.fs().read_file_bytes(&cache_file_path)?)
+          let local_file_path =
+            url_to_local_sub_path(key.url, headers_content_type(&headers))?
+              .as_path_from_root(&self.path);
+          let maybe_file_bytes = self.fs().read_file_bytes(&local_file_path)?;
+          match maybe_file_bytes {
+            Some(bytes) => Ok(Some(bytes)),
+            None => {
+              let global_key = self.global_cache.cache_item_key(key.url)?;
+              let maybe_file_bytes =
+                self.global_cache.read_file_bytes(&global_key)?;
+              if let Some(bytes) = &maybe_file_bytes {
+                self.fs().atomic_write_file(&local_file_path, bytes)?;
+              }
+              Ok(maybe_file_bytes)
+            }
+          }
         }
       }
       None => Ok(None),
     }
   }
 
-  fn read_metadata(
+  fn read_headers(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<CachedUrlMetadata>, AnyError> {
+  ) -> Result<Option<HeadersMap>, AnyError> {
     #[cfg(debug_assertions)]
     debug_assert!(key.is_local_key);
 
-    self.get_url_metadata_checking_global_cache(key.url)
+    self.get_url_headers(key.url)
+  }
+
+  fn read_download_time(
+    &self,
+    key: &HttpCacheItemKey,
+  ) -> Result<Option<SystemTime>, AnyError> {
+    // This will never be called for the local cache in practice
+    // because only the LSP ever reads this time for telling if
+    // a file should be re-downloaded when respecting cache headers
+    // and it only does this using a global cache
+    self.read_modified_time(key)
   }
 }
 
@@ -648,59 +675,15 @@ impl<Env: DenoCacheEnv> LocalCacheManifest<Env> {
     }
   }
 
-  pub fn get_metadata(&self, url: &Url) -> Option<CachedUrlMetadata> {
+  pub fn get_stored_headers(&self, url: &Url) -> Option<HeadersMap> {
     let data = self.data.read();
-    match data.get(url) {
-      Some(module) => {
-        let headers = module
-          .headers
-          .iter()
-          .map(|(k, v)| (k.to_string(), v.to_string()))
-          .collect::<HashMap<_, _>>();
-        let sub_path = if headers.contains_key("location") {
-          Cow::Borrowed(&self.file_path)
-        } else {
-          let sub_path =
-            url_to_local_sub_path(url, headers_content_type(&headers)).ok()?;
-          let folder_path = self.file_path.parent().unwrap();
-          Cow::Owned(sub_path.as_path_from_root(folder_path))
-        };
-
-        let Ok(Some(modified)) = self.env.modified(&sub_path) else {
-          return None;
-        };
-
-        Some(CachedUrlMetadata {
-          headers,
-          url: url.to_string(),
-          time: modified,
-        })
-      }
-      None => {
-        let folder_path = self.file_path.parent().unwrap();
-        let sub_path = url_to_local_sub_path(url, None).ok()?;
-        if sub_path
-          .parts
-          .last()
-          .map(|s| s.starts_with('#'))
-          .unwrap_or(false)
-        {
-          // only filenames without a hash are considered as in the cache
-          // when they don't have a metadata entry
-          return None;
-        }
-        let file_path = sub_path.as_path_from_root(folder_path);
-        if let Ok(Some(modified)) = self.env.modified(&file_path) {
-          Some(CachedUrlMetadata {
-            headers: Default::default(),
-            url: url.to_string(),
-            time: modified,
-          })
-        } else {
-          None
-        }
-      }
-    }
+    data.get(url).map(|module| {
+      module
+        .headers
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect::<HashMap<_, _>>()
+    })
   }
 }
 

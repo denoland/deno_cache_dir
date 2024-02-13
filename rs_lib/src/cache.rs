@@ -8,7 +8,6 @@ use std::time::SystemTime;
 use url::Url;
 
 use crate::common::HeadersMap;
-use crate::DenoCacheEnv;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SerializedCachedUrlMetadata {
@@ -16,42 +15,6 @@ pub struct SerializedCachedUrlMetadata {
   pub url: String,
   #[serde(rename = "now")]
   pub time: Option<SystemTime>,
-}
-
-impl SerializedCachedUrlMetadata {
-  pub fn into_cached_url_metadata(
-    self,
-    env: &impl DenoCacheEnv,
-  ) -> CachedUrlMetadata {
-    let time = self.time.unwrap_or_else(|| env.time_now());
-    CachedUrlMetadata {
-      headers: self.headers,
-      url: self.url,
-      time,
-    }
-  }
-}
-
-/// Cached metadata about a url.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CachedUrlMetadata {
-  pub headers: HeadersMap,
-  pub url: String,
-  pub time: SystemTime,
-}
-
-impl CachedUrlMetadata {
-  pub fn is_redirect(&self) -> bool {
-    self.headers.contains_key("location")
-  }
-
-  pub fn into_serialized(self) -> SerializedCachedUrlMetadata {
-    SerializedCachedUrlMetadata {
-      headers: self.headers,
-      url: self.url,
-      time: Some(self.time),
-    }
-  }
 }
 
 /// Computed cache key, which can help reduce the work of computing the cache key multiple times.
@@ -91,10 +54,16 @@ pub trait HttpCache: Send + Sync + std::fmt::Debug {
     &self,
     key: &HttpCacheItemKey,
   ) -> Result<Option<Vec<u8>>, AnyError>;
-  fn read_metadata(
+  /// Reads the headers for the cache item.
+  fn read_headers(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<CachedUrlMetadata>, AnyError>;
+  ) -> Result<Option<HeadersMap>, AnyError>;
+  /// Reads the time the item was downloaded to the cache.
+  fn read_download_time(
+    &self,
+    key: &HttpCacheItemKey,
+  ) -> Result<Option<SystemTime>, AnyError>;
 }
 
 #[cfg(test)]

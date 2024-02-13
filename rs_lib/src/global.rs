@@ -5,10 +5,11 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 
 use anyhow::Error as AnyError;
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use thiserror::Error;
 use url::Url;
 
-use super::cache::CachedUrlMetadata;
 use super::cache::HttpCache;
 use super::cache::HttpCacheItemKey;
 use super::common::base_url_to_filename_parts;
@@ -99,6 +100,18 @@ impl<Env: DenoCacheEnv> GlobalHttpCache<Env> {
     // have this for redirects.
     key.file_path.as_ref().unwrap()
   }
+
+  fn read_serialized_cache_metadata<T: DeserializeOwned>(
+    &self,
+    key: &HttpCacheItemKey,
+  ) -> Result<Option<T>, AnyError> {
+    let path = self.key_file_path(key).with_extension("metadata.json");
+    let bytes = self.env.read_file_bytes(&path)?;
+    Ok(match bytes {
+      Some(bytes) => Some(serde_json::from_slice::<T>(&bytes)?),
+      None => None,
+    })
+  }
 }
 
 impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
@@ -141,12 +154,15 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
     // Cache content
     self.env.atomic_write_file(&cache_filepath, content)?;
 
-    let metadata = CachedUrlMetadata {
-      time: self.env.time_now(),
-      url: url.to_string(),
-      headers,
-    };
-    write_metadata(&self.env, &cache_filepath, metadata)?;
+    write_metadata(
+      &self.env,
+      &cache_filepath,
+      &SerializedCachedUrlMetadata {
+        time: Some(self.env.time_now()),
+        url: url.to_string(),
+        headers,
+      },
+    )?;
 
     Ok(())
   }
@@ -161,32 +177,52 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
     Ok(self.env.read_file_bytes(self.key_file_path(key))?)
   }
 
-  fn read_metadata(
+  fn read_headers(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<CachedUrlMetadata>, AnyError> {
+  ) -> Result<Option<HeadersMap>, AnyError> {
+    // targeted deserialize
+    #[derive(Deserialize)]
+    struct SerializedHeaders {
+      pub headers: HeadersMap,
+    }
+
     #[cfg(debug_assertions)]
     debug_assert!(!key.is_local_key);
+    Ok(
+      self
+        .read_serialized_cache_metadata::<SerializedHeaders>(key)?
+        .map(|item| item.headers),
+    )
+  }
 
-    let path = self.key_file_path(key).with_extension("metadata.json");
-    let bytes = self.env.read_file_bytes(&path)?;
-    Ok(match bytes {
-      Some(metadata) => Some(
-        serde_json::from_slice::<SerializedCachedUrlMetadata>(&metadata)?
-          .into_cached_url_metadata(&self.env),
-      ),
-      None => None,
-    })
+  fn read_download_time(
+    &self,
+    key: &HttpCacheItemKey,
+  ) -> Result<Option<SystemTime>, AnyError> {
+    // targeted deserialize
+    #[derive(Deserialize)]
+    struct SerializedTime {
+      pub now: Option<SystemTime>,
+    }
+
+    #[cfg(debug_assertions)]
+    debug_assert!(!key.is_local_key);
+    Ok(
+      self
+        .read_serialized_cache_metadata::<SerializedTime>(key)?
+        .and_then(|item| item.now),
+    )
   }
 }
 
 fn write_metadata<Env: DenoCacheEnv>(
   env: &Env,
   path: &Path,
-  meta_data: CachedUrlMetadata,
+  meta_data: &SerializedCachedUrlMetadata,
 ) -> Result<(), AnyError> {
   let path = path.with_extension("metadata.json");
-  let json = serde_json::to_string_pretty(&meta_data.into_serialized())?;
+  let json = serde_json::to_string_pretty(meta_data)?;
   env.atomic_write_file(&path, json.as_bytes())?;
   Ok(())
 }

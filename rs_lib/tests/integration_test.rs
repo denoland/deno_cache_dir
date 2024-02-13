@@ -97,7 +97,7 @@ fn test_global_get_set() {
   let key = cache.cache_item_key(&url).unwrap();
   let content =
     String::from_utf8(cache.read_file_bytes(&key).unwrap().unwrap()).unwrap();
-  let headers = cache.read_metadata(&key).unwrap().unwrap().headers;
+  let headers = cache.read_headers(&key).unwrap().unwrap();
   assert_eq!(content, "Hello world");
   assert_eq!(
     headers.get("content-type").unwrap(),
@@ -105,6 +105,8 @@ fn test_global_get_set() {
   );
   assert_eq!(headers.get("etag").unwrap(), "as5625rqdsfb");
   assert_eq!(headers.get("foobar"), None);
+  let download_time = cache.read_download_time(&key).unwrap().unwrap();
+  assert!(download_time.elapsed().unwrap().as_secs() < 1);
 }
 
 #[test]
@@ -139,10 +141,9 @@ fn test_local_global_cache() {
         .unwrap(),
       content
     );
-    let metadata = local_cache.read_metadata(&key).unwrap().unwrap();
+    let headers = local_cache.read_headers(&key).unwrap().unwrap();
     // won't have any headers because the content-type is derivable from the url
-    assert_eq!(metadata.headers, HashMap::new());
-    assert_eq!(metadata.url, url.to_string());
+    assert_eq!(headers, HashMap::new());
     // no manifest file yet
     assert!(!manifest_file_path.exists());
 
@@ -169,9 +170,8 @@ fn test_local_global_cache() {
         .unwrap(),
       content
     );
-    let metadata = local_cache.read_metadata(&key).unwrap().unwrap();
-    assert_eq!(metadata.headers, HashMap::new());
-    assert_eq!(metadata.url, url.to_string());
+    let headers = local_cache.read_headers(&key).unwrap().unwrap();
+    assert_eq!(headers, HashMap::new());
   }
 
   // now try a file with a different content-type header
@@ -195,15 +195,14 @@ fn test_local_global_cache() {
         .unwrap(),
       content
     );
-    let metadata = local_cache.read_metadata(&key).unwrap().unwrap();
+    let headers = local_cache.read_headers(&key).unwrap().unwrap();
     assert_eq!(
-      metadata.headers,
+      headers,
       HashMap::from([(
         "content-type".to_string(),
         "application/javascript".to_string(),
       )])
     );
-    assert_eq!(metadata.url, url.to_string());
     assert_eq!(
       read_manifest(&manifest_file_path),
       json!({
@@ -221,9 +220,9 @@ fn test_local_global_cache() {
 
     // Now try resolving the key again and the content type should still be application/javascript.
     // This is maintained because we hash the filename when the headers don't match the extension.
-    let metadata = local_cache.read_metadata(&key).unwrap().unwrap();
+    let headers = local_cache.read_headers(&key).unwrap().unwrap();
     assert_eq!(
-      metadata.headers,
+      headers,
       HashMap::from([(
         "content-type".to_string(),
         "application/javascript".to_string(),
@@ -265,15 +264,14 @@ fn test_local_global_cache() {
           .unwrap(),
         content
       );
-      let metadata = local_cache.read_metadata(&key).unwrap().unwrap();
+      let headers = local_cache.read_headers(&key).unwrap().unwrap();
       assert_eq!(
-        metadata.headers,
+        headers,
         HashMap::from([
           ("x-typescript-types".to_string(), "./types.d.ts".to_string(),),
           ("x-deno-warning".to_string(), "Stop right now.".to_string(),)
         ])
       );
-      assert_eq!(metadata.url, url.to_string());
       assert_eq!(
         read_manifest(&manifest_file_path),
         json!({
@@ -315,10 +313,9 @@ fn test_local_global_cache() {
           .unwrap(),
         content
       );
-      let metadata = local_cache.read_metadata(&key).unwrap().unwrap();
+      let headers = local_cache.read_headers(&key).unwrap().unwrap();
       // won't have any headers because the content-type is derivable from the url
-      assert_eq!(metadata.headers, HashMap::new());
-      assert_eq!(metadata.url, url.to_string());
+      assert_eq!(headers, HashMap::new());
     }
 
     // now try a file in the same directory, but that maps to the local filesystem
@@ -380,12 +377,11 @@ fn test_local_global_cache() {
       )
       .unwrap();
     let key = local_cache.cache_item_key(&url).unwrap();
-    let metadata = local_cache.read_metadata(&key).unwrap().unwrap();
+    let headers = local_cache.read_headers(&key).unwrap().unwrap();
     assert_eq!(
-      metadata.headers,
+      headers,
       HashMap::from([("location".to_string(), "./x/mod.ts".to_string())])
     );
-    assert_eq!(metadata.url, url.to_string());
     assert_eq!(
       read_manifest(&manifest_file_path),
       json!({
