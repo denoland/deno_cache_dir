@@ -5,7 +5,6 @@ mod common;
 mod global;
 mod local;
 
-pub use cache::CachedUrlMetadata;
 pub use cache::HttpCache;
 pub use cache::HttpCacheItemKey;
 pub use cache::SerializedCachedUrlMetadata;
@@ -28,8 +27,8 @@ pub mod wasm {
   use url::Url;
   use wasm_bindgen::prelude::*;
 
-  use crate::CachedUrlMetadata;
-  use crate::DenoCacheEnv;
+  use crate::common::HeadersMap;
+use crate::DenoCacheEnv;
   use crate::HttpCache;
 
   #[wasm_bindgen(module = "/fs.js")]
@@ -175,16 +174,16 @@ pub mod wasm {
     fn inner<Cache: HttpCache>(
       cache: &Cache,
       url: &str,
-    ) -> anyhow::Result<Option<CachedUrlMetadata>> {
+    ) -> anyhow::Result<Option<HeadersMap>> {
       let url = Url::parse(url)?;
       let key = cache.cache_item_key(&url)?;
-      cache.read_metadata(&key)
+      cache.read_headers(&key)
     }
 
     inner(cache, url)
-      .map(|metadata| match metadata {
-        Some(metadata) => {
-          serde_wasm_bindgen::to_value(&metadata.headers).unwrap()
+      .map(|headers| match headers {
+        Some(headers) => {
+          serde_wasm_bindgen::to_value(&headers).unwrap()
         }
         None => JsValue::undefined(),
       })

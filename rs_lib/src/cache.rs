@@ -17,28 +17,6 @@ pub struct SerializedCachedUrlMetadata {
   pub time: Option<SystemTime>,
 }
 
-impl SerializedCachedUrlMetadata {
-  pub fn into_cached_url_metadata(self) -> CachedUrlMetadata {
-    CachedUrlMetadata {
-      headers: self.headers,
-      url: self.url,
-    }
-  }
-}
-
-/// Cached metadata about a url.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CachedUrlMetadata {
-  pub url: String,
-  pub headers: HeadersMap,
-}
-
-impl CachedUrlMetadata {
-  pub fn is_redirect(&self) -> bool {
-    self.headers.contains_key("location")
-  }
-}
-
 /// Computed cache key, which can help reduce the work of computing the cache key multiple times.
 pub struct HttpCacheItemKey<'a> {
   // The key is specific to the implementation of HttpCache,
@@ -76,11 +54,13 @@ pub trait HttpCache: Send + Sync + std::fmt::Debug {
     &self,
     key: &HttpCacheItemKey,
   ) -> Result<Option<Vec<u8>>, AnyError>;
-  fn read_metadata(
+  /// Reads the headers for the cache item.
+  fn read_headers(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<CachedUrlMetadata>, AnyError>;
-  fn read_metadata_time(
+  ) -> Result<Option<HeadersMap>, AnyError>;
+  /// Reads the time the item was downloaded to the cache.
+  fn read_download_time(
     &self,
     key: &HttpCacheItemKey,
   ) -> Result<Option<SystemTime>, AnyError>;
