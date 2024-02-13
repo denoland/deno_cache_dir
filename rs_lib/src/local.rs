@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
@@ -174,6 +173,13 @@ impl<Env: DenoCacheEnv> HttpCache for LocalLspHttpCache<Env> {
   ) -> Result<Option<CachedUrlMetadata>, AnyError> {
     self.cache.read_metadata(key)
   }
+
+  fn read_metadata_time(
+    &self,
+    key: &HttpCacheItemKey,
+  ) -> Result<Option<SystemTime>, AnyError> {
+    self.cache.read_modified_time(key)
+  }
 }
 
 #[derive(Debug)]
@@ -224,30 +230,7 @@ impl<Env: DenoCacheEnv> LocalHttpCache<Env> {
       .manifest
       .insert_data(local_path, url.clone(), metadata.headers);
 
-    Ok(self.manifest.get_metadata(url).or_else(|| {
-      // if the metadata returns None, then that means the local file
-      // doesn't have a local manifest entry (no headers) and doesn't
-      // exist yet, so just return back the parts necessary from the
-      // global metadata
-      Some(CachedUrlMetadata {
-        headers: Default::default(),
-        time: metadata.time,
-        url: metadata.url,
-      })
-    }))
-  }
-
-  fn get_manifest_metadata(&self, url: &Url) -> Result<Option<CachedUrlMetadata>, AnyError> {
-    let Some((headers, local_file_path)) = self.manifest.get_headers_and_file_path(url) else {
-      return Ok(None);
-    };
-    let maybe_modified = self.fs().modified(&local_file_path)?;
-    let modified = match maybe_modified {
-      Some(modified) => modified,
-      None => {
-        
-      },
-    };
+    Ok(self.manifest.get_metadata(url))
   }
 }
 
@@ -275,7 +258,17 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
     #[cfg(debug_assertions)]
     debug_assert!(key.is_local_key);
 
-    self.get_url_metadata(key.url).map(|m| m.map(|m| m.time))
+    if let Some(metadata) = self.manifest.get_metadata(key.url) {
+      let local_path =
+        url_to_local_sub_path(key.url, headers_content_type(&metadata.headers))?;
+      if let Ok(Some(modified_time)) = self.fs().modified(&local_path.as_path_from_root(&self.path)) {
+        return Ok(Some(modified_time));
+      }
+    }
+
+    // fallback to the global cache
+    let global_key = self.global_cache.cache_item_key(key.url)?;
+    self.global_cache.read_modified_time(&global_key)
   }
 
   fn set(
@@ -346,6 +339,14 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
     debug_assert!(key.is_local_key);
 
     self.get_url_metadata(key.url)
+  }
+
+  fn read_metadata_time(
+    &self,
+    key: &HttpCacheItemKey,
+  ) -> Result<Option<SystemTime>, AnyError> {
+    // this will never be called for the local cache in practice
+    self.read_modified_time(key)
   }
 }
 
@@ -659,7 +660,7 @@ impl<Env: DenoCacheEnv> LocalCacheManifest<Env> {
     }
   }
 
-  pub fn get_headers_and_file_path(&self, url: &Url) -> Option<(HeadersMap, Cow<PathBuf>)> {
+  pub fn get_metadata(&self, url: &Url) -> Option<CachedUrlMetadata> {
     let data = self.data.read();
     match data.get(url) {
       Some(module) => {
@@ -668,19 +669,12 @@ impl<Env: DenoCacheEnv> LocalCacheManifest<Env> {
           .iter()
           .map(|(k, v)| (k.to_string(), v.to_string()))
           .collect::<HashMap<_, _>>();
-        let sub_path = if headers.contains_key("location") {
-          Cow::Borrowed(&self.file_path)
-        } else {
-          let sub_path =
-            url_to_local_sub_path(url, headers_content_type(&headers)).ok()?;
-          let folder_path = self.file_path.parent().unwrap();
-          Cow::Owned(sub_path.as_path_from_root(folder_path))
-        };
-
-        Some((headers, sub_path))
+        Some(CachedUrlMetadata { 
+          url: url.to_string(),
+          headers,
+        })
       }
       None => {
-        let folder_path = self.file_path.parent().unwrap();
         let sub_path = url_to_local_sub_path(url, None).ok()?;
         if sub_path
           .parts
@@ -692,8 +686,11 @@ impl<Env: DenoCacheEnv> LocalCacheManifest<Env> {
           // when they don't have a metadata entry
           return None;
         }
-        let file_path = sub_path.as_path_from_root(folder_path);
-        Some((Default::default(), Cow::Owned(file_path)))
+
+        Some(CachedUrlMetadata { 
+          url: url.to_string(),
+          headers: Default::default(),
+        })
       }
     }
   }

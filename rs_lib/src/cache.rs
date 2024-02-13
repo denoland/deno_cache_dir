@@ -8,7 +8,6 @@ use std::time::SystemTime;
 use url::Url;
 
 use crate::common::HeadersMap;
-use crate::DenoCacheEnv;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SerializedCachedUrlMetadata {
@@ -21,13 +20,10 @@ pub struct SerializedCachedUrlMetadata {
 impl SerializedCachedUrlMetadata {
   pub fn into_cached_url_metadata(
     self,
-    env: &impl DenoCacheEnv,
   ) -> CachedUrlMetadata {
-    let time = self.time.unwrap_or_else(|| env.time_now());
     CachedUrlMetadata {
       headers: self.headers,
       url: self.url,
-      time,
     }
   }
 }
@@ -35,22 +31,13 @@ impl SerializedCachedUrlMetadata {
 /// Cached metadata about a url.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CachedUrlMetadata {
-  pub headers: HeadersMap,
   pub url: String,
-  pub time: SystemTime,
+  pub headers: HeadersMap,
 }
 
 impl CachedUrlMetadata {
   pub fn is_redirect(&self) -> bool {
     self.headers.contains_key("location")
-  }
-
-  pub fn into_serialized(self) -> SerializedCachedUrlMetadata {
-    SerializedCachedUrlMetadata {
-      headers: self.headers,
-      url: self.url,
-      time: Some(self.time),
-    }
   }
 }
 
@@ -95,6 +82,10 @@ pub trait HttpCache: Send + Sync + std::fmt::Debug {
     &self,
     key: &HttpCacheItemKey,
   ) -> Result<Option<CachedUrlMetadata>, AnyError>;
+  fn read_metadata_time(
+    &self,
+    key: &HttpCacheItemKey,
+  ) -> Result<Option<SystemTime>, AnyError>;
 }
 
 #[cfg(test)]

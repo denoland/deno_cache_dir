@@ -99,6 +99,17 @@ impl<Env: DenoCacheEnv> GlobalHttpCache<Env> {
     // have this for redirects.
     key.file_path.as_ref().unwrap()
   }
+
+  fn read_serialized_cache_metadata(&self, key: &HttpCacheItemKey) -> Result<Option<SerializedCachedUrlMetadata>, AnyError> {
+    let path = self.key_file_path(key).with_extension("metadata.json");
+    let bytes = self.env.read_file_bytes(&path)?;
+    Ok(match bytes {
+      Some(metadata) => Some(
+        serde_json::from_slice::<SerializedCachedUrlMetadata>(&metadata)?
+      ),
+      None => None,
+    })
+  }
 }
 
 impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
@@ -141,12 +152,11 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
     // Cache content
     self.env.atomic_write_file(&cache_filepath, content)?;
 
-    let metadata = CachedUrlMetadata {
-      time: self.env.time_now(),
+    write_metadata(&self.env, &cache_filepath, &SerializedCachedUrlMetadata {
+      time: Some(self.env.time_now()),
       url: url.to_string(),
       headers,
-    };
-    write_metadata(&self.env, &cache_filepath, metadata)?;
+    })?;
 
     Ok(())
   }
@@ -168,25 +178,24 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
     #[cfg(debug_assertions)]
     debug_assert!(!key.is_local_key);
 
-    let path = self.key_file_path(key).with_extension("metadata.json");
-    let bytes = self.env.read_file_bytes(&path)?;
-    Ok(match bytes {
-      Some(metadata) => Some(
-        serde_json::from_slice::<SerializedCachedUrlMetadata>(&metadata)?
-          .into_cached_url_metadata(&self.env),
-      ),
-      None => None,
-    })
+    Ok(self.read_serialized_cache_metadata(key)?.map(|item| item.into_cached_url_metadata()))
+  }
+
+  fn read_metadata_time(
+    &self,
+    key: &HttpCacheItemKey,
+  ) -> Result<Option<SystemTime>, AnyError> {
+    Ok(self.read_serialized_cache_metadata(key)?.and_then(|item| item.time))
   }
 }
 
 fn write_metadata<Env: DenoCacheEnv>(
   env: &Env,
   path: &Path,
-  meta_data: CachedUrlMetadata,
+  meta_data: &SerializedCachedUrlMetadata,
 ) -> Result<(), AnyError> {
   let path = path.with_extension("metadata.json");
-  let json = serde_json::to_string_pretty(&meta_data.into_serialized())?;
+  let json = serde_json::to_string_pretty(meta_data)?;
   env.atomic_write_file(&path, json.as_bytes())?;
   Ok(())
 }
