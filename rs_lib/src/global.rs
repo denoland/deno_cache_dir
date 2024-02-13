@@ -140,13 +140,13 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
       if let Some(expected_checksum) = maybe_checksum {
         let actual = checksum(file_bytes);
         if expected_checksum.as_str() != actual {
-          return Err(
-            CacheReadFileError::ChecksumIntegrity(Box::new(ChecksumIntegrityError {
+          return Err(CacheReadFileError::ChecksumIntegrity(Box::new(
+            ChecksumIntegrityError {
               url: key.url.clone(),
               expected: expected_checksum.as_str().to_string(),
               actual,
-            }))
-          );
+            },
+          )));
         }
       }
     }

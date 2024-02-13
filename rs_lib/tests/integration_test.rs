@@ -110,8 +110,8 @@ fn test_global_get_set() {
   assert_eq!(headers.get("foobar"), None);
   let download_time = cache.read_download_time(&key).unwrap().unwrap();
   assert!(download_time.elapsed().unwrap().as_secs() < 1);
-    let matching_checksum =
-      "64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c";
+  let matching_checksum =
+    "64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c";
   // reading with checksum that matches
   {
     let found_content = cache
@@ -122,9 +122,7 @@ fn test_global_get_set() {
   }
   // reading with a checksum that doesn't match
   {
-
-    let not_matching_checksum =
-      "1234";
+    let not_matching_checksum = "1234";
     let err = cache
       .read_file_bytes(&key, Some(Checksum::new(not_matching_checksum)))
       .err()
@@ -447,7 +445,8 @@ fn test_local_global_cache() {
   let local_cache =
     LocalHttpCache::new(local_cache_path.clone(), global_cache.clone());
   let url = Url::parse("https://deno.land/x/mod.ts").unwrap();
-  let matching_checksum = "5eadcbe625a8489347fc3b229ab66bdbcbdfecedf229dfe5d0a8a399dae6c005";
+  let matching_checksum =
+    "5eadcbe625a8489347fc3b229ab66bdbcbdfecedf229dfe5d0a8a399dae6c005";
   let content = "export const test = 5;";
   global_cache
     .set(
@@ -463,8 +462,7 @@ fn test_local_global_cache() {
   // reading with a checksum that doesn't match
   // (ensure it doesn't match twice so we know it wasn't copied to the local cache)
   for _ in 0..2 {
-    let not_matching_checksum =
-      "1234";
+    let not_matching_checksum = "1234";
     let err = local_cache
       .read_file_bytes(&key, Some(Checksum::new(not_matching_checksum)))
       .err()

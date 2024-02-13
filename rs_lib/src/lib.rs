@@ -6,9 +6,9 @@ mod global;
 mod local;
 
 pub use cache::url_to_filename;
+pub use cache::CacheReadFileError;
 pub use cache::Checksum;
 pub use cache::ChecksumIntegrityError;
-pub use cache::CacheReadFileError;
 pub use cache::HttpCache;
 pub use cache::HttpCacheItemKey;
 pub use cache::SerializedCachedUrlMetadata;
