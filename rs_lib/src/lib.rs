@@ -5,11 +5,15 @@ mod common;
 mod global;
 mod local;
 
+pub use cache::url_to_filename;
+pub use cache::CacheReadFileError;
+pub use cache::Checksum;
+pub use cache::ChecksumIntegrityError;
 pub use cache::HttpCache;
 pub use cache::HttpCacheItemKey;
 pub use cache::SerializedCachedUrlMetadata;
+pub use cache::UrlToFilenameConversionError;
 pub use common::DenoCacheEnv;
-pub use global::url_to_filename;
 pub use global::GlobalHttpCache;
 pub use local::LocalHttpCache;
 pub use local::LocalLspHttpCache;
@@ -28,6 +32,7 @@ pub mod wasm {
   use wasm_bindgen::prelude::*;
 
   use crate::common::HeadersMap;
+  use crate::Checksum;
   use crate::DenoCacheEnv;
   use crate::HttpCache;
 
@@ -93,7 +98,7 @@ pub mod wasm {
   pub fn url_to_filename(url: &str) -> Result<String, JsValue> {
     console_error_panic_hook::set_once();
     let url = Url::parse(url).map_err(|e| as_js_error(e.into()))?;
-    crate::global::url_to_filename(&url)
+    crate::cache::url_to_filename(&url)
       .map(|s| s.to_string_lossy().to_string())
       .map_err(|e| as_js_error(e.into()))
   }
@@ -117,8 +122,12 @@ pub mod wasm {
     }
 
     #[wasm_bindgen(js_name = getFileBytes)]
-    pub fn get_file_bytes(&self, url: &str) -> Result<JsValue, JsValue> {
-      get_file_bytes(&self.cache, url)
+    pub fn get_file_bytes(
+      &self,
+      url: &str,
+      maybe_checksum: Option<String>,
+    ) -> Result<JsValue, JsValue> {
+      get_file_bytes(&self.cache, url, maybe_checksum.as_deref())
     }
 
     pub fn set(
@@ -153,8 +162,12 @@ pub mod wasm {
     }
 
     #[wasm_bindgen(js_name = getFileBytes)]
-    pub fn get_file_bytes(&self, url: &str) -> Result<JsValue, JsValue> {
-      get_file_bytes(&self.cache, url)
+    pub fn get_file_bytes(
+      &self,
+      url: &str,
+      maybe_checksum: Option<String>,
+    ) -> Result<JsValue, JsValue> {
+      get_file_bytes(&self.cache, url, maybe_checksum.as_deref())
     }
 
     pub fn set(
@@ -191,20 +204,22 @@ pub mod wasm {
   fn get_file_bytes<Cache: HttpCache>(
     cache: &Cache,
     url: &str,
+    maybe_checksum: Option<&str>,
   ) -> Result<JsValue, JsValue> {
     fn inner<Cache: HttpCache>(
       cache: &Cache,
       url: &str,
+      maybe_checksum: Option<Checksum>,
     ) -> anyhow::Result<Option<Vec<u8>>> {
       let url = Url::parse(url)?;
       let key = cache.cache_item_key(&url)?;
-      match cache.read_file_bytes(&key)? {
+      match cache.read_file_bytes(&key, maybe_checksum)? {
         Some(bytes) => Ok(Some(bytes)),
         None => Ok(None),
       }
     }
 
-    inner(cache, url)
+    inner(cache, url, maybe_checksum.map(Checksum::new))
       .map(|text| match text {
         Some(bytes) => {
           let array = Uint8Array::new_with_length(bytes.len() as u32);

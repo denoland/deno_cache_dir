@@ -125,7 +125,7 @@ export class FileFetcher {
     specifier: URL,
     cacheSetting: CacheSetting,
   ): Promise<LoadResponse> {
-    const cached = await this.#fetchCached(specifier, 0);
+    const cached = await this.#fetchCached(specifier, undefined, 0);
     if (cached) {
       return cached;
     }
@@ -153,6 +153,7 @@ export class FileFetcher {
 
   async #fetchCached(
     specifier: URL,
+    maybeChecksum: string | undefined,
     redirectLimit: number,
   ): Promise<LoadResponse | undefined> {
     if (redirectLimit < 0) {
@@ -168,9 +169,9 @@ export class FileFetcher {
     const location = headers["location"];
     if (location != null && location.length > 0) {
       const redirect = new URL(location, specifier);
-      return this.#fetchCached(redirect, redirectLimit - 1);
+      return this.#fetchCached(redirect, maybeChecksum, redirectLimit - 1);
     }
-    const content = await this.#httpCache.get(specifier);
+    const content = await this.#httpCache.get(specifier, maybeChecksum);
     if (content == null) {
       return undefined;
     }
@@ -182,11 +183,15 @@ export class FileFetcher {
     };
   }
 
-  async #fetchRemote(
-    specifier: URL,
-    redirectLimit: number,
-    cacheSetting: CacheSetting,
-  ): Promise<LoadResponse | undefined> {
+  async #fetchRemote(specifier: URL, {
+    redirectLimit,
+    cacheSetting,
+    checksum,
+  }: {
+    redirectLimit: number;
+    cacheSetting: CacheSetting;
+    checksum: string | undefined;
+  }): Promise<LoadResponse | undefined> {
     if (redirectLimit < 0) {
       throw new Deno.errors.Http(
         `Too many redirects.\n  Specifier: "${specifier.toString()}"`,
@@ -194,7 +199,11 @@ export class FileFetcher {
     }
 
     if (shouldUseCache(cacheSetting, specifier)) {
-      const response = await this.#fetchCached(specifier, redirectLimit);
+      const response = await this.#fetchCached(
+        specifier,
+        checksum,
+        redirectLimit,
+      );
       if (response) {
         return response;
       }
@@ -218,6 +227,7 @@ export class FileFetcher {
     if (authToken) {
       requestHeaders.append("authorization", authToken);
     }
+    // deno-lint-ignore no-console
     console.error(`${colors.green("Download")} ${specifier.toString()}`);
     const response = await fetchWithRetries(specifier.toString(), {
       headers: requestHeaders,
@@ -242,6 +252,17 @@ export class FileFetcher {
       headers[key.toLowerCase()] = value;
     }
     await this.#httpCache.set(url, headers, content);
+    if (checksum != null) {
+      const digest = await crypto.subtle.digest("SHA-256", content);
+      const actualChecksum = Array.from(new Uint8Array(digest))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      if (actualChecksum != checksum) {
+        throw new Error(
+          `Integrity check failed for: ${url}\n\nActual: ${actualChecksum}\nExpected: ${checksum}`,
+        );
+      }
+    }
     return {
       kind: "module",
       specifier: response.url,
@@ -252,7 +273,7 @@ export class FileFetcher {
 
   async fetch(
     specifier: URL,
-    options?: { cacheSetting?: CacheSetting },
+    options?: { cacheSetting?: CacheSetting; checksum?: string },
   ): Promise<LoadResponse | undefined> {
     const cacheSetting = options?.cacheSetting ?? this.#cacheSetting;
     const scheme = getValidatedScheme(specifier);
@@ -271,7 +292,11 @@ export class FileFetcher {
         `A remote specifier was requested: "${specifier.toString()}", but --no-remote is specified.`,
       );
     } else {
-      const response = await this.#fetchRemote(specifier, 10, cacheSetting);
+      const response = await this.#fetchRemote(specifier, {
+        redirectLimit: 10,
+        cacheSetting,
+        checksum: options?.checksum,
+      });
       if (response) {
         await this.#cache.set(specifier.toString(), response);
       }
@@ -299,6 +324,7 @@ export async function fetchWithRetries(
         throw err;
       }
     }
+    // deno-lint-ignore no-console
     console.warn(
       `${
         colors.yellow("WARN")

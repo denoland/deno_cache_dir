@@ -7,63 +7,19 @@ use std::time::SystemTime;
 use anyhow::Error as AnyError;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
-use thiserror::Error;
 use url::Url;
 
 use super::cache::HttpCache;
 use super::cache::HttpCacheItemKey;
-use super::common::base_url_to_filename_parts;
 use super::common::DenoCacheEnv;
+use crate::cache::url_to_filename;
+use crate::cache::CacheReadFileError;
+use crate::cache::Checksum;
 use crate::cache::SerializedCachedUrlMetadata;
+use crate::cache::UrlToFilenameConversionError;
 use crate::common::checksum;
 use crate::common::HeadersMap;
-
-#[derive(Debug, Error)]
-#[error("Can't convert url (\"{}\") to filename.", .url)]
-pub struct UrlToFilenameConversionError {
-  pub(super) url: String,
-}
-
-/// Turn provided `url` into a hashed filename.
-/// URLs can contain a lot of characters that cannot be used
-/// in filenames (like "?", "#", ":"), so in order to cache
-/// them properly they are deterministically hashed into ASCII
-/// strings.
-pub fn url_to_filename(
-  url: &Url,
-) -> Result<PathBuf, UrlToFilenameConversionError> {
-  let Some(mut cache_filename) = base_url_to_filename(url) else {
-    return Err(UrlToFilenameConversionError {
-      url: url.to_string(),
-    });
-  };
-
-  let mut rest_str = url.path().to_string();
-  if let Some(query) = url.query() {
-    rest_str.push('?');
-    rest_str.push_str(query);
-  }
-  // NOTE: fragment is omitted on purpose - it's not taken into
-  // account when caching - it denotes parts of webpage, which
-  // in case of static resources doesn't make much sense
-  let hashed_filename = checksum(rest_str.as_bytes());
-  cache_filename.push(hashed_filename);
-  Ok(cache_filename)
-}
-
-// Turn base of url (scheme, hostname, port) into a valid filename.
-/// This method replaces port part with a special string token (because
-/// ":" cannot be used in filename on some platforms).
-/// Ex: $DENO_DIR/deps/https/deno.land/
-fn base_url_to_filename(url: &Url) -> Option<PathBuf> {
-  base_url_to_filename_parts(url, "_PORT").map(|parts| {
-    let mut out = PathBuf::new();
-    for part in parts {
-      out.push(part);
-    }
-    out
-  })
-}
+use crate::ChecksumIntegrityError;
 
 #[derive(Debug)]
 pub struct GlobalHttpCache<Env: DenoCacheEnv> {
@@ -89,7 +45,10 @@ impl<Env: DenoCacheEnv> GlobalHttpCache<Env> {
     Ok(self.path.join(url_to_filename(url)?))
   }
 
-  fn get_cache_filepath(&self, url: &Url) -> Result<PathBuf, AnyError> {
+  fn get_cache_filepath(
+    &self,
+    url: &Url,
+  ) -> Result<PathBuf, UrlToFilenameConversionError> {
     Ok(self.path.join(url_to_filename(url)?))
   }
 
@@ -118,7 +77,7 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
-  ) -> Result<HttpCacheItemKey<'a>, AnyError> {
+  ) -> Result<HttpCacheItemKey<'a>, UrlToFilenameConversionError> {
     Ok(HttpCacheItemKey {
       #[cfg(debug_assertions)]
       is_local_key: false,
@@ -170,11 +129,29 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
   fn read_file_bytes(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<Vec<u8>>, AnyError> {
+    maybe_checksum: Option<Checksum>,
+  ) -> Result<Option<Vec<u8>>, CacheReadFileError> {
     #[cfg(debug_assertions)]
     debug_assert!(!key.is_local_key);
 
-    Ok(self.env.read_file_bytes(self.key_file_path(key))?)
+    let maybe_file_bytes = self.env.read_file_bytes(self.key_file_path(key))?;
+
+    if let Some(file_bytes) = &maybe_file_bytes {
+      if let Some(expected_checksum) = maybe_checksum {
+        let actual = checksum(file_bytes);
+        if expected_checksum.as_str() != actual {
+          return Err(CacheReadFileError::ChecksumIntegrity(Box::new(
+            ChecksumIntegrityError {
+              url: key.url.clone(),
+              expected: expected_checksum.as_str().to_string(),
+              actual,
+            },
+          )));
+        }
+      }
+    }
+
+    Ok(maybe_file_bytes)
   }
 
   fn read_headers(

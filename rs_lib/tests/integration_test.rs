@@ -3,6 +3,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::SystemTime;
 
+use deno_cache_dir::CacheReadFileError;
+use deno_cache_dir::Checksum;
 use deno_cache_dir::DenoCacheEnv;
 use deno_cache_dir::GlobalHttpCache;
 use deno_cache_dir::HttpCache;
@@ -96,7 +98,8 @@ fn test_global_get_set() {
   cache.set(&url, headers, content).unwrap();
   let key = cache.cache_item_key(&url).unwrap();
   let content =
-    String::from_utf8(cache.read_file_bytes(&key).unwrap().unwrap()).unwrap();
+    String::from_utf8(cache.read_file_bytes(&key, None).unwrap().unwrap())
+      .unwrap();
   let headers = cache.read_headers(&key).unwrap().unwrap();
   assert_eq!(content, "Hello world");
   assert_eq!(
@@ -107,6 +110,31 @@ fn test_global_get_set() {
   assert_eq!(headers.get("foobar"), None);
   let download_time = cache.read_download_time(&key).unwrap().unwrap();
   assert!(download_time.elapsed().unwrap().as_secs() < 1);
+  let matching_checksum =
+    "64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c";
+  // reading with checksum that matches
+  {
+    let found_content = cache
+      .read_file_bytes(&key, Some(Checksum::new(matching_checksum)))
+      .unwrap()
+      .unwrap();
+    assert_eq!(found_content, content.as_bytes());
+  }
+  // reading with a checksum that doesn't match
+  {
+    let not_matching_checksum = "1234";
+    let err = cache
+      .read_file_bytes(&key, Some(Checksum::new(not_matching_checksum)))
+      .err()
+      .unwrap();
+    let err = match err {
+      CacheReadFileError::ChecksumIntegrity(err) => err,
+      _ => unreachable!(),
+    };
+    assert_eq!(err.actual, matching_checksum);
+    assert_eq!(err.expected, not_matching_checksum);
+    assert_eq!(err.url, url);
+  }
 }
 
 #[test]
@@ -137,8 +165,10 @@ fn test_local_global_cache() {
       .unwrap();
     let key = local_cache.cache_item_key(&url).unwrap();
     assert_eq!(
-      String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
-        .unwrap(),
+      String::from_utf8(
+        local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+      )
+      .unwrap(),
       content
     );
     let headers = local_cache.read_headers(&key).unwrap().unwrap();
@@ -150,8 +180,10 @@ fn test_local_global_cache() {
     // now try deleting the global cache and we should still be able to load it
     std::fs::remove_dir_all(&global_cache_path).unwrap();
     assert_eq!(
-      String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
-        .unwrap(),
+      String::from_utf8(
+        local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+      )
+      .unwrap(),
       content
     );
   }
@@ -166,8 +198,10 @@ fn test_local_global_cache() {
     let url = Url::parse("https://deno.land/main.js").unwrap();
     let key = local_cache.cache_item_key(&url).unwrap();
     assert_eq!(
-      String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
-        .unwrap(),
+      String::from_utf8(
+        local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+      )
+      .unwrap(),
       content
     );
     let headers = local_cache.read_headers(&key).unwrap().unwrap();
@@ -191,8 +225,10 @@ fn test_local_global_cache() {
       .unwrap();
     let key = local_cache.cache_item_key(&url).unwrap();
     assert_eq!(
-      String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
-        .unwrap(),
+      String::from_utf8(
+        local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+      )
+      .unwrap(),
       content
     );
     let headers = local_cache.read_headers(&key).unwrap().unwrap();
@@ -260,8 +296,10 @@ fn test_local_global_cache() {
     let check_output = |local_cache: &LocalHttpCache<_>| {
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
-        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
-          .unwrap(),
+        String::from_utf8(
+          local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+        )
+        .unwrap(),
         content
       );
       let headers = local_cache.read_headers(&key).unwrap().unwrap();
@@ -309,8 +347,10 @@ fn test_local_global_cache() {
         .unwrap();
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
-        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
-          .unwrap(),
+        String::from_utf8(
+          local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+        )
+        .unwrap(),
         content
       );
       let headers = local_cache.read_headers(&key).unwrap().unwrap();
@@ -327,8 +367,10 @@ fn test_local_global_cache() {
         .unwrap();
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
-        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
-          .unwrap(),
+        String::from_utf8(
+          local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+        )
+        .unwrap(),
         content
       );
       assert!(local_cache_path
@@ -341,8 +383,10 @@ fn test_local_global_cache() {
         global_cache.clone(),
       );
       assert_eq!(
-        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
-          .unwrap(),
+        String::from_utf8(
+          local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+        )
+        .unwrap(),
         content
       );
     }
@@ -395,6 +439,58 @@ fn test_local_global_cache() {
       })
     );
   }
+
+  // reset the local cache
+  std::fs::remove_dir_all(&local_cache_path).unwrap();
+  let local_cache =
+    LocalHttpCache::new(local_cache_path.clone(), global_cache.clone());
+  let url = Url::parse("https://deno.land/x/mod.ts").unwrap();
+  let matching_checksum =
+    "5eadcbe625a8489347fc3b229ab66bdbcbdfecedf229dfe5d0a8a399dae6c005";
+  let content = "export const test = 5;";
+  global_cache
+    .set(
+      &url,
+      HashMap::from([(
+        "content-type".to_string(),
+        "application/typescript".to_string(),
+      )]),
+      content.as_bytes(),
+    )
+    .unwrap();
+  let key = local_cache.cache_item_key(&url).unwrap();
+  // reading with a checksum that doesn't match
+  // (ensure it doesn't match twice so we know it wasn't copied to the local cache)
+  for _ in 0..2 {
+    let not_matching_checksum = "1234";
+    let err = local_cache
+      .read_file_bytes(&key, Some(Checksum::new(not_matching_checksum)))
+      .err()
+      .unwrap();
+    let err = match err {
+      CacheReadFileError::ChecksumIntegrity(err) => err,
+      _ => unreachable!(),
+    };
+    assert_eq!(err.actual, matching_checksum);
+    assert_eq!(err.expected, not_matching_checksum);
+    assert_eq!(err.url, url);
+  }
+  // reading with checksum that matches
+  {
+    let found_content = local_cache
+      .read_file_bytes(&key, Some(Checksum::new(matching_checksum)))
+      .unwrap()
+      .unwrap();
+    assert_eq!(found_content, content.as_bytes());
+  }
+  // at this point the file should exist in the local cache and so the checksum will be ignored
+  {
+    let found_content = local_cache
+      .read_file_bytes(&key, Some(Checksum::new("not matching")))
+      .unwrap()
+      .unwrap();
+    assert_eq!(found_content, content.as_bytes());
+  }
 }
 
 fn read_manifest(path: &Path) -> serde_json::Value {
@@ -431,8 +527,10 @@ fn test_lsp_local_cache() {
       .unwrap();
     let key = local_cache.cache_item_key(&url).unwrap();
     assert_eq!(
-      String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
-        .unwrap(),
+      String::from_utf8(
+        local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+      )
+      .unwrap(),
       content
     );
 
@@ -472,8 +570,10 @@ fn test_lsp_local_cache() {
       .unwrap();
     let key = local_cache.cache_item_key(&url).unwrap();
     assert_eq!(
-      String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
-        .unwrap(),
+      String::from_utf8(
+        local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+      )
+      .unwrap(),
       content
     );
 
@@ -498,8 +598,10 @@ fn test_lsp_local_cache() {
         .unwrap();
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
-        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
-          .unwrap(),
+        String::from_utf8(
+          local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+        )
+        .unwrap(),
         content
       );
 
@@ -524,8 +626,10 @@ fn test_lsp_local_cache() {
         .unwrap();
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
-        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
-          .unwrap(),
+        String::from_utf8(
+          local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+        )
+        .unwrap(),
         content
       );
       let file_url = local_cache.get_file_url(&url).unwrap();

@@ -60,8 +60,12 @@ export class HttpCache {
 
   async get(
     url: URL,
+    maybeChecksum: string | undefined,
   ): Promise<Uint8Array | undefined> {
-    const data = (await this.#ensureCache()).getFileBytes(url.toString());
+    const data = (await this.#ensureCache()).getFileBytes(
+      url.toString(),
+      maybeChecksum,
+    );
     return data == null ? undefined : data;
   }
 
