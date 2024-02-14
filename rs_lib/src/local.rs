@@ -168,7 +168,9 @@ impl<Env: DenoCacheEnv> HttpCache for LocalLspHttpCache<Env> {
     maybe_checksum: Option<Checksum>,
     allow_global_to_local: GlobalToLocalCopy,
   ) -> Result<Option<Vec<u8>>, CacheReadFileError> {
-    self.cache.read_file_bytes(key, maybe_checksum, allow_global_to_local)
+    self
+      .cache
+      .read_file_bytes(key, maybe_checksum, allow_global_to_local)
   }
 
   fn read_headers(
@@ -340,9 +342,11 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
               if allow_global_to_local.is_true() {
                 // only check the checksum when copying from the global to the local cache
                 let global_key = self.global_cache.cache_item_key(key.url)?;
-                let maybe_file_bytes = self
-                  .global_cache
-                  .read_file_bytes(&global_key, maybe_checksum, allow_global_to_local)?;
+                let maybe_file_bytes = self.global_cache.read_file_bytes(
+                  &global_key,
+                  maybe_checksum,
+                  allow_global_to_local,
+                )?;
                 if let Some(bytes) = &maybe_file_bytes {
                   self.fs().atomic_write_file(&local_file_path, bytes)?;
                 }

@@ -9,9 +9,9 @@ pub use cache::url_to_filename;
 pub use cache::CacheReadFileError;
 pub use cache::Checksum;
 pub use cache::ChecksumIntegrityError;
+pub use cache::GlobalToLocalCopy;
 pub use cache::HttpCache;
 pub use cache::HttpCacheItemKey;
-pub use cache::GlobalToLocalCopy;
 pub use cache::SerializedCachedUrlMetadata;
 pub use cache::UrlToFilenameConversionError;
 pub use common::DenoCacheEnv;
@@ -33,7 +33,7 @@ pub mod wasm {
   use wasm_bindgen::prelude::*;
 
   use crate::cache::GlobalToLocalCopy;
-use crate::common::HeadersMap;
+  use crate::common::HeadersMap;
   use crate::Checksum;
   use crate::DenoCacheEnv;
   use crate::HttpCache;
@@ -130,7 +130,12 @@ use crate::common::HeadersMap;
       maybe_checksum: Option<String>,
       allow_global_to_local_copy: bool,
     ) -> Result<JsValue, JsValue> {
-      get_file_bytes(&self.cache, url, maybe_checksum.as_deref(), allow_global_to_local_copy)
+      get_file_bytes(
+        &self.cache,
+        url,
+        maybe_checksum.as_deref(),
+        allow_global_to_local_copy,
+      )
     }
 
     pub fn set(
@@ -169,9 +174,14 @@ use crate::common::HeadersMap;
       &self,
       url: &str,
       maybe_checksum: Option<String>,
-      allow_global_to_local_copy: bool
+      allow_global_to_local_copy: bool,
     ) -> Result<JsValue, JsValue> {
-      get_file_bytes(&self.cache, url, maybe_checksum.as_deref(), allow_global_to_local_copy)
+      get_file_bytes(
+        &self.cache,
+        url,
+        maybe_checksum.as_deref(),
+        allow_global_to_local_copy,
+      )
     }
 
     pub fn set(
@@ -219,27 +229,36 @@ use crate::common::HeadersMap;
     ) -> anyhow::Result<Option<Vec<u8>>> {
       let url = Url::parse(url)?;
       let key = cache.cache_item_key(&url)?;
-      match cache.read_file_bytes(&key, maybe_checksum, allow_global_to_local)? {
+      match cache.read_file_bytes(
+        &key,
+        maybe_checksum,
+        allow_global_to_local,
+      )? {
         Some(bytes) => Ok(Some(bytes)),
         None => Ok(None),
       }
     }
 
-      let allow_global_to_local = if allow_global_to_local_copy {
-        GlobalToLocalCopy::Allow
-      } else {
-        GlobalToLocalCopy::Disallow
-      };
-    inner(cache, url, maybe_checksum.map(Checksum::new), allow_global_to_local)
-      .map(|text| match text {
-        Some(bytes) => {
-          let array = Uint8Array::new_with_length(bytes.len() as u32);
-          array.copy_from(&bytes);
-          JsValue::from(array)
-        }
-        None => JsValue::undefined(),
-      })
-      .map_err(as_js_error)
+    let allow_global_to_local = if allow_global_to_local_copy {
+      GlobalToLocalCopy::Allow
+    } else {
+      GlobalToLocalCopy::Disallow
+    };
+    inner(
+      cache,
+      url,
+      maybe_checksum.map(Checksum::new),
+      allow_global_to_local,
+    )
+    .map(|text| match text {
+      Some(bytes) => {
+        let array = Uint8Array::new_with_length(bytes.len() as u32);
+        array.copy_from(&bytes);
+        JsValue::from(array)
+      }
+      None => JsValue::undefined(),
+    })
+    .map_err(as_js_error)
   }
 
   fn set<Cache: HttpCache>(
