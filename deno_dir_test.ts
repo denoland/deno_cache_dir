@@ -3,6 +3,7 @@
 import { assertEquals, assertRejects } from "./deps_test.ts";
 import { DenoDir } from "./deno_dir.ts";
 import { assert } from "./util.ts";
+import { withTempDir } from "./deps_test.ts";
 
 Deno.test({
   name: "DenoDir - basic",
@@ -60,9 +61,58 @@ export * from "./glob.ts";
     // ok
     await deps.get(
       url,
-      "d3e68d0abb393fb0bf94a6d07c46ec31dc755b544b13144dee931d8d5f06a52d",
+      {
+        checksum:
+          "d3e68d0abb393fb0bf94a6d07c46ec31dc755b544b13144dee931d8d5f06a52d",
+      },
     );
     // not ok
-    await assertRejects(async () => await deps.get(url, "invalid"));
+    await assertRejects(async () =>
+      await deps.get(url, {
+        checksum: "invalid",
+      })
+    );
+  },
+});
+
+Deno.test({
+  name: "HttpCache - global cache - allowCopyGlobalToLocal",
+  async fn() {
+    const denoDir = new DenoDir();
+    const url = new URL("https://deno.land/std@0.140.0/path/mod.ts");
+    const deps = denoDir.createHttpCache();
+    // disallow will still work because we're using a global cache
+    // which is not affected by this option
+    const text = await deps.get(url, {
+      allowCopyGlobalToLocal: false,
+    });
+    assertEquals(text!.length, 820);
+  },
+});
+
+Deno.test({
+  name: "HttpCache - local cache- allowCopyGlobalToLocal",
+  async fn() {
+    await withTempDir(async (tempDir) => {
+      const denoDir = new DenoDir();
+      const url = new URL("https://deno.land/std@0.140.0/path/mod.ts");
+      const deps = denoDir.createHttpCache({
+        vendorRoot: tempDir,
+      });
+      // disallow
+      {
+        const text = await deps.get(url, {
+          allowCopyGlobalToLocal: false,
+        });
+        assertEquals(text, undefined);
+      }
+      // allow
+      {
+        const text = await deps.get(url, {
+          allowCopyGlobalToLocal: true,
+        });
+        assertEquals(text!.length, 820);
+      }
+    });
   },
 });
