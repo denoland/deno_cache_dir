@@ -32,7 +32,7 @@ impl GlobalToLocalCopy {
 }
 
 #[derive(Debug, Error)]
-#[error("Integrity check failed for: {}\n\nActual: {}\nExpected: {}", .url, .actual, .expected)]
+#[error("Integrity check failed for {}\n\nActual: {}\nExpected: {}", .url, .actual, .expected)]
 pub struct ChecksumIntegrityError {
   pub url: Url,
   pub actual: String,

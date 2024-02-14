@@ -263,7 +263,7 @@ export class FileFetcher {
         .join("");
       if (actualChecksum != options.checksum) {
         throw new Error(
-          `Integrity check failed for: ${url}\n\nActual: ${actualChecksum}\nExpected: ${options.checksum}`,
+          `Integrity check failed for ${url}\n\nActual: ${actualChecksum}\nExpected: ${options.checksum}`,
         );
       }
     }
