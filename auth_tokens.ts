@@ -46,6 +46,8 @@ export class AuthTokens {
           tokens.push({ type: "bearer", host, token });
         }
       } else {
+        // todo(dsherret): feel like this should error?
+        // deno-lint-ignore no-console
         console.error("Badly formed auth token discarded.");
       }
     }

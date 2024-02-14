@@ -6,6 +6,13 @@
     "build": "deno task wasmbuild",
     "wasmbuild": "deno run -A https://deno.land/x/wasmbuild@0.15.6/main.ts --sync --features wasm"
   },
+  "lint": {
+    "rules": {
+      "include": [
+        "no-console"
+      ]
+    }
+  },
   "exclude": [
     "target"
   ]

@@ -18,8 +18,9 @@ export class FetchCacher {
     specifier: string,
     _isDynamic?: boolean,
     cacheSetting?: CacheSetting,
+    checksum?: string,
   ): Promise<LoadResponse | undefined> => {
     const url = new URL(specifier);
-    return this.#fileFetcher.fetch(url, { cacheSetting });
+    return this.#fileFetcher.fetch(url, { cacheSetting, checksum });
   };
 }

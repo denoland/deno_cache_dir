@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-import { assertEquals } from "./deps_test.ts";
+import { assertEquals, assertRejects } from "./deps_test.ts";
 import { DenoDir } from "./deno_dir.ts";
 import { assert } from "./util.ts";
 
@@ -12,7 +12,7 @@ Deno.test({
     const deps = denoDir.createHttpCache();
     const headers = (await deps.getHeaders(url))!;
     assert(Object.keys(headers).length > 10);
-    const text = new TextDecoder().decode(await deps.get(url));
+    const text = new TextDecoder().decode(await deps.get(url, undefined));
     assertEquals(
       text,
       `// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
@@ -56,5 +56,13 @@ export * from "./_interface.ts";
 export * from "./glob.ts";
 `,
     );
+
+    // ok
+    await deps.get(
+      url,
+      "d3e68d0abb393fb0bf94a6d07c46ec31dc755b544b13144dee931d8d5f06a52d",
+    );
+    // not ok
+    await assertRejects(async () => await deps.get(url, "invalid"));
   },
 });
