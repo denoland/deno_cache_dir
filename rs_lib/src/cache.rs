@@ -12,6 +12,25 @@ use crate::common::base_url_to_filename_parts;
 use crate::common::checksum;
 use crate::common::HeadersMap;
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum GlobalToLocalCopy {
+  /// When using a local cache (vendor folder), allow the cache to
+  /// copy from the global cache into the local one.
+  Allow,
+  /// Disallow copying from the global to the local cache. This is
+  /// useful for the LSP because we want to ensure that checksums
+  /// are evaluated for JSR dependencies, which is difficult to do
+  /// in the LSP. This could be improved in the future to not require
+  /// this
+  Disallow,
+}
+
+impl GlobalToLocalCopy {
+  pub fn is_true(&self) -> bool {
+    matches!(self, GlobalToLocalCopy::Allow)
+  }
+}
+
 #[derive(Debug, Error)]
 #[error("Integrity check failed for: {}\n\nActual: {}\nExpected: {}", .url, .actual, .expected)]
 pub struct ChecksumIntegrityError {
@@ -137,6 +156,7 @@ pub trait HttpCache: Send + Sync + std::fmt::Debug {
     &self,
     key: &HttpCacheItemKey,
     maybe_checksum: Option<Checksum>,
+    allow_global_to_local: GlobalToLocalCopy,
   ) -> Result<Option<Vec<u8>>, CacheReadFileError>;
   /// Reads the headers for the cache item.
   fn read_headers(
