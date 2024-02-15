@@ -3,7 +3,7 @@
 import { AuthTokens } from "./auth_tokens.ts";
 import { colors, fromFileUrl } from "./deps.ts";
 import type { LoadResponse } from "./deps.ts";
-import type { HttpCache } from "./http_cache.ts";
+import type { HttpCache, HttpCacheGetOptions } from "./http_cache.ts";
 
 /**
  * A setting that determines how the cache is handled for remote dependencies.
@@ -102,6 +102,14 @@ async function fetchLocal(specifier: URL): Promise<LoadResponse | undefined> {
   }
 }
 
+type ResolvedFetchOptions =
+  & Omit<FetchOptions, "cacheSetting">
+  & Pick<Required<FetchOptions>, "cacheSetting">;
+
+interface FetchOptions extends HttpCacheGetOptions {
+  cacheSetting?: CacheSetting;
+}
+
 export class FileFetcher {
   #allowRemote: boolean;
   #authTokens: AuthTokens;
@@ -123,14 +131,14 @@ export class FileFetcher {
 
   async #fetchBlobDataUrl(
     specifier: URL,
-    cacheSetting: CacheSetting,
+    options: ResolvedFetchOptions,
   ): Promise<LoadResponse> {
-    const cached = await this.#fetchCached(specifier, undefined, 0);
+    const cached = await this.#fetchCached(specifier, 0, options);
     if (cached) {
       return cached;
     }
 
-    if (cacheSetting === "only") {
+    if (options.cacheSetting === "only") {
       throw new Deno.errors.NotFound(
         `Specifier not found in cache: "${specifier.toString()}", --cached-only is specified.`,
       );
@@ -153,8 +161,8 @@ export class FileFetcher {
 
   async #fetchCached(
     specifier: URL,
-    maybeChecksum: string | undefined,
     redirectLimit: number,
+    options: ResolvedFetchOptions,
   ): Promise<LoadResponse | undefined> {
     if (redirectLimit < 0) {
       throw new Deno.errors.Http(
@@ -169,9 +177,9 @@ export class FileFetcher {
     const location = headers["location"];
     if (location != null && location.length > 0) {
       const redirect = new URL(location, specifier);
-      return this.#fetchCached(redirect, maybeChecksum, redirectLimit - 1);
+      return this.#fetchCached(redirect, redirectLimit - 1, options);
     }
-    const content = await this.#httpCache.get(specifier, maybeChecksum);
+    const content = await this.#httpCache.get(specifier, options);
     if (content == null) {
       return undefined;
     }
@@ -183,33 +191,29 @@ export class FileFetcher {
     };
   }
 
-  async #fetchRemote(specifier: URL, {
-    redirectLimit,
-    cacheSetting,
-    checksum,
-  }: {
-    redirectLimit: number;
-    cacheSetting: CacheSetting;
-    checksum: string | undefined;
-  }): Promise<LoadResponse | undefined> {
+  async #fetchRemote(
+    specifier: URL,
+    redirectLimit: number,
+    options: ResolvedFetchOptions,
+  ): Promise<LoadResponse | undefined> {
     if (redirectLimit < 0) {
       throw new Deno.errors.Http(
         `Too many redirects.\n  Specifier: "${specifier.toString()}"`,
       );
     }
 
-    if (shouldUseCache(cacheSetting, specifier)) {
+    if (shouldUseCache(options.cacheSetting, specifier)) {
       const response = await this.#fetchCached(
         specifier,
-        checksum,
         redirectLimit,
+        options,
       );
       if (response) {
         return response;
       }
     }
 
-    if (cacheSetting === "only") {
+    if (options.cacheSetting === "only") {
       throw new Deno.errors.NotFound(
         `Specifier not found in cache: "${specifier.toString()}", --cached-only is specified.`,
       );
@@ -252,14 +256,14 @@ export class FileFetcher {
       headers[key.toLowerCase()] = value;
     }
     await this.#httpCache.set(url, headers, content);
-    if (checksum != null) {
+    if (options?.checksum != null) {
       const digest = await crypto.subtle.digest("SHA-256", content);
       const actualChecksum = Array.from(new Uint8Array(digest))
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
-      if (actualChecksum != checksum) {
+      if (actualChecksum != options.checksum) {
         throw new Error(
-          `Integrity check failed for: ${url}\n\nActual: ${actualChecksum}\nExpected: ${checksum}`,
+          `Integrity check failed for ${url}\n\nActual: ${actualChecksum}\nExpected: ${options.checksum}`,
         );
       }
     }
@@ -273,9 +277,8 @@ export class FileFetcher {
 
   async fetch(
     specifier: URL,
-    options?: { cacheSetting?: CacheSetting; checksum?: string },
+    options?: FetchOptions,
   ): Promise<LoadResponse | undefined> {
-    const cacheSetting = options?.cacheSetting ?? this.#cacheSetting;
     const scheme = getValidatedScheme(specifier);
     if (scheme === "file:") {
       return fetchLocal(specifier);
@@ -284,7 +287,10 @@ export class FileFetcher {
     if (response) {
       return response;
     } else if (scheme === "data:" || scheme === "blob:") {
-      const response = await this.#fetchBlobDataUrl(specifier, cacheSetting);
+      const response = await this.#fetchBlobDataUrl(
+        specifier,
+        this.#resolveOptions(options),
+      );
       await this.#cache.set(specifier.toString(), response);
       return response;
     } else if (!this.#allowRemote) {
@@ -292,16 +298,22 @@ export class FileFetcher {
         `A remote specifier was requested: "${specifier.toString()}", but --no-remote is specified.`,
       );
     } else {
-      const response = await this.#fetchRemote(specifier, {
-        redirectLimit: 10,
-        cacheSetting,
-        checksum: options?.checksum,
-      });
+      const response = await this.#fetchRemote(
+        specifier,
+        10,
+        this.#resolveOptions(options),
+      );
       if (response) {
         await this.#cache.set(specifier.toString(), response);
       }
       return response;
     }
+  }
+
+  #resolveOptions(options?: FetchOptions): ResolvedFetchOptions {
+    options ??= {};
+    options.cacheSetting = options.cacheSetting ?? this.#cacheSetting;
+    return options as ResolvedFetchOptions;
   }
 }
 

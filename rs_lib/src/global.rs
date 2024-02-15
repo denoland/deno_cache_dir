@@ -15,6 +15,7 @@ use super::common::DenoCacheEnv;
 use crate::cache::url_to_filename;
 use crate::cache::CacheReadFileError;
 use crate::cache::Checksum;
+use crate::cache::GlobalToLocalCopy;
 use crate::cache::SerializedCachedUrlMetadata;
 use crate::cache::UrlToFilenameConversionError;
 use crate::common::checksum;
@@ -130,6 +131,7 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
     &self,
     key: &HttpCacheItemKey,
     maybe_checksum: Option<Checksum>,
+    _allow_global_to_local: GlobalToLocalCopy,
   ) -> Result<Option<Vec<u8>>, CacheReadFileError> {
     #[cfg(debug_assertions)]
     debug_assert!(!key.is_local_key);

@@ -7,6 +7,7 @@ use deno_cache_dir::CacheReadFileError;
 use deno_cache_dir::Checksum;
 use deno_cache_dir::DenoCacheEnv;
 use deno_cache_dir::GlobalHttpCache;
+use deno_cache_dir::GlobalToLocalCopy;
 use deno_cache_dir::HttpCache;
 use deno_cache_dir::LocalHttpCache;
 use deno_cache_dir::LocalLspHttpCache;
@@ -97,9 +98,13 @@ fn test_global_get_set() {
   let content = b"Hello world";
   cache.set(&url, headers, content).unwrap();
   let key = cache.cache_item_key(&url).unwrap();
-  let content =
-    String::from_utf8(cache.read_file_bytes(&key, None).unwrap().unwrap())
-      .unwrap();
+  let content = String::from_utf8(
+    cache
+      .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
+      .unwrap()
+      .unwrap(),
+  )
+  .unwrap();
   let headers = cache.read_headers(&key).unwrap().unwrap();
   assert_eq!(content, "Hello world");
   assert_eq!(
@@ -115,7 +120,11 @@ fn test_global_get_set() {
   // reading with checksum that matches
   {
     let found_content = cache
-      .read_file_bytes(&key, Some(Checksum::new(matching_checksum)))
+      .read_file_bytes(
+        &key,
+        Some(Checksum::new(matching_checksum)),
+        GlobalToLocalCopy::Allow,
+      )
       .unwrap()
       .unwrap();
     assert_eq!(found_content, content.as_bytes());
@@ -124,7 +133,11 @@ fn test_global_get_set() {
   {
     let not_matching_checksum = "1234";
     let err = cache
-      .read_file_bytes(&key, Some(Checksum::new(not_matching_checksum)))
+      .read_file_bytes(
+        &key,
+        Some(Checksum::new(not_matching_checksum)),
+        GlobalToLocalCopy::Allow,
+      )
       .err()
       .unwrap();
     let err = match err {
@@ -166,7 +179,10 @@ fn test_local_global_cache() {
     let key = local_cache.cache_item_key(&url).unwrap();
     assert_eq!(
       String::from_utf8(
-        local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+        local_cache
+          .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
+          .unwrap()
+          .unwrap()
       )
       .unwrap(),
       content
@@ -181,7 +197,10 @@ fn test_local_global_cache() {
     std::fs::remove_dir_all(&global_cache_path).unwrap();
     assert_eq!(
       String::from_utf8(
-        local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+        local_cache
+          .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
+          .unwrap()
+          .unwrap()
       )
       .unwrap(),
       content
@@ -199,7 +218,10 @@ fn test_local_global_cache() {
     let key = local_cache.cache_item_key(&url).unwrap();
     assert_eq!(
       String::from_utf8(
-        local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+        local_cache
+          .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
+          .unwrap()
+          .unwrap()
       )
       .unwrap(),
       content
@@ -226,7 +248,10 @@ fn test_local_global_cache() {
     let key = local_cache.cache_item_key(&url).unwrap();
     assert_eq!(
       String::from_utf8(
-        local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+        local_cache
+          .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
+          .unwrap()
+          .unwrap()
       )
       .unwrap(),
       content
@@ -297,7 +322,10 @@ fn test_local_global_cache() {
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
         String::from_utf8(
-          local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+          local_cache
+            .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
+            .unwrap()
+            .unwrap()
         )
         .unwrap(),
         content
@@ -348,7 +376,10 @@ fn test_local_global_cache() {
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
         String::from_utf8(
-          local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+          local_cache
+            .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
+            .unwrap()
+            .unwrap()
         )
         .unwrap(),
         content
@@ -368,7 +399,10 @@ fn test_local_global_cache() {
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
         String::from_utf8(
-          local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+          local_cache
+            .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
+            .unwrap()
+            .unwrap()
         )
         .unwrap(),
         content
@@ -384,7 +418,10 @@ fn test_local_global_cache() {
       );
       assert_eq!(
         String::from_utf8(
-          local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+          local_cache
+            .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
+            .unwrap()
+            .unwrap()
         )
         .unwrap(),
         content
@@ -464,7 +501,11 @@ fn test_local_global_cache() {
   for _ in 0..2 {
     let not_matching_checksum = "1234";
     let err = local_cache
-      .read_file_bytes(&key, Some(Checksum::new(not_matching_checksum)))
+      .read_file_bytes(
+        &key,
+        Some(Checksum::new(not_matching_checksum)),
+        GlobalToLocalCopy::Allow,
+      )
       .err()
       .unwrap();
     let err = match err {
@@ -478,7 +519,11 @@ fn test_local_global_cache() {
   // reading with checksum that matches
   {
     let found_content = local_cache
-      .read_file_bytes(&key, Some(Checksum::new(matching_checksum)))
+      .read_file_bytes(
+        &key,
+        Some(Checksum::new(matching_checksum)),
+        GlobalToLocalCopy::Allow,
+      )
       .unwrap()
       .unwrap();
     assert_eq!(found_content, content.as_bytes());
@@ -486,7 +531,11 @@ fn test_local_global_cache() {
   // at this point the file should exist in the local cache and so the checksum will be ignored
   {
     let found_content = local_cache
-      .read_file_bytes(&key, Some(Checksum::new("not matching")))
+      .read_file_bytes(
+        &key,
+        Some(Checksum::new("not matching")),
+        GlobalToLocalCopy::Allow,
+      )
       .unwrap()
       .unwrap();
     assert_eq!(found_content, content.as_bytes());
@@ -528,7 +577,10 @@ fn test_lsp_local_cache() {
     let key = local_cache.cache_item_key(&url).unwrap();
     assert_eq!(
       String::from_utf8(
-        local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+        local_cache
+          .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
+          .unwrap()
+          .unwrap()
       )
       .unwrap(),
       content
@@ -571,7 +623,10 @@ fn test_lsp_local_cache() {
     let key = local_cache.cache_item_key(&url).unwrap();
     assert_eq!(
       String::from_utf8(
-        local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+        local_cache
+          .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
+          .unwrap()
+          .unwrap()
       )
       .unwrap(),
       content
@@ -599,7 +654,10 @@ fn test_lsp_local_cache() {
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
         String::from_utf8(
-          local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+          local_cache
+            .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
+            .unwrap()
+            .unwrap()
         )
         .unwrap(),
         content
@@ -627,7 +685,10 @@ fn test_lsp_local_cache() {
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
         String::from_utf8(
-          local_cache.read_file_bytes(&key, None).unwrap().unwrap()
+          local_cache
+            .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
+            .unwrap()
+            .unwrap()
         )
         .unwrap(),
         content

@@ -14,6 +14,15 @@ export interface HttpCacheCreateOptions {
   readOnly?: boolean;
 }
 
+export interface HttpCacheGetOptions {
+  /** Checksum to evaluate the file against. This is only evaluated for the
+   * global cache (DENO_DIR) and not the local cache (vendor folder).
+   */
+  checksum?: string;
+  /** Allow copying from the global to the local cache (vendor folder). */
+  allowCopyGlobalToLocal?: boolean;
+}
+
 export class HttpCache {
   #createOptions: HttpCacheCreateOptions;
   #cache: LocalHttpCache | GlobalHttpCache | undefined;
@@ -60,11 +69,12 @@ export class HttpCache {
 
   async get(
     url: URL,
-    maybeChecksum: string | undefined,
+    options?: HttpCacheGetOptions,
   ): Promise<Uint8Array | undefined> {
     const data = (await this.#ensureCache()).getFileBytes(
       url.toString(),
-      maybeChecksum,
+      options?.checksum,
+      options?.allowCopyGlobalToLocal ?? true,
     );
     return data == null ? undefined : data;
   }
