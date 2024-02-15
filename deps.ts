@@ -25,3 +25,8 @@ export type {
   CacheInfo,
   LoadResponse,
 } from "https://deno.land/x/deno_graph@0.66.0/mod.ts";
+export type {
+  LoadResponseModule,
+  LoadResponseExternal,
+} from "https://deno.land/x/deno_graph@0.66.0/types.ts";
+
