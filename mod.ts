@@ -51,10 +51,17 @@ export interface Loader {
    */
   load(
     specifier: string,
-    _isDynamic?: boolean,
+    isDynamic?: boolean,
     cacheSetting?: CacheSetting,
+    checksum?: string,
   ): Promise<LoadResponse | undefined>;
 }
+
+export type {
+  LoadResponse,
+  LoadResponseExternal,
+  LoadResponseModule,
+} from "./deps.ts";
 
 export interface CacheOptions {
   /** Allow remote URLs to be fetched if missing from the cache. This defaults
