@@ -57,7 +57,11 @@ export interface Loader {
   ): Promise<LoadResponse | undefined>;
 }
 
-export type { LoadResponse, LoadResponseModule, LoadResponseExternal } from "./deps.ts";
+export type {
+  LoadResponse,
+  LoadResponseExternal,
+  LoadResponseModule,
+} from "./deps.ts";
 
 export interface CacheOptions {
   /** Allow remote URLs to be fetched if missing from the cache. This defaults
