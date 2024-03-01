@@ -328,7 +328,7 @@ export async function fetchWithRetries(
     iterationCount++;
     try {
       const res = await fetch(url, init);
-      if (res.ok || iterationCount > maxRetries || res.status === 404) {
+      if (res.ok || iterationCount > maxRetries || res.status >= 400 && res.status < 500) {
         return res;
       }
     } catch (err) {
