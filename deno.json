@@ -13,6 +13,13 @@
       ]
     }
   },
+  "publish": {
+    "exclude": [
+      "Cargo.lock",
+      "rs_lib",
+      "**/*.toml"
+    ]
+  },
   "exclude": [
     "target"
   ],
