@@ -1,7 +1,6 @@
 # deno_cache_dir
 
 [![jsr](https://jsr.io/badges/@deno/cache-dir)](https://jsr.io/@deno/cache-dir)
-[![Build Status - Cirrus][]][Build status]
 [![](https://img.shields.io/crates/v/deno_cache_dir.svg)](https://crates.io/crates/deno_cache_dir)
 
 Implementation of the DENO_DIR/cache for the Deno CLI.
