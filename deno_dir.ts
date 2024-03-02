@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. MIT license.
 
-import { isAbsolute, join, normalize, resolve } from "./deps.ts";
+import { isAbsolute, join, normalize, resolve } from "@std/path";
 import { DiskCache } from "./disk_cache.ts";
 import { cacheDir, homeDir } from "./dirs.ts";
 import { HttpCache } from "./http_cache.ts";

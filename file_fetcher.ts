@@ -1,8 +1,9 @@
 // Copyright 2018-2024 the Deno authors. MIT license.
 
 import { AuthTokens } from "./auth_tokens.ts";
-import { colors, fromFileUrl } from "./deps.ts";
-import type { LoadResponse } from "./deps.ts";
+import { fromFileUrl } from "@std/path";
+import * as colors from "@std/fmt/colors";
+import type { LoadResponse } from "@deno/graph";
 import type { HttpCache, HttpCacheGetOptions } from "./http_cache.ts";
 
 /**

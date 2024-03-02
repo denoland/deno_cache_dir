@@ -1,13 +1,8 @@
 // Copyright 2018-2024 the Deno authors. MIT license.
 
-import {
-  dirname,
-  ensureDir,
-  isAbsolute,
-  join,
-  readAll,
-  writeAll,
-} from "./deps.ts";
+import { ensureDir } from "@std/fs/ensure_dir";
+import { dirname, isAbsolute, join } from "@std/path";
+import { readAll, writeAll } from "@std/io";
 import { assert, CACHE_PERM } from "./util.ts";
 import { instantiate } from "./lib/deno_cache_dir.generated.js";
 

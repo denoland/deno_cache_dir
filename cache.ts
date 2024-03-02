@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. MIT license.
 
-import type { LoadResponse } from "./deps.ts";
+import type { LoadResponse } from "@deno/graph";
 import type { CacheSetting, FileFetcher } from "./file_fetcher.ts";
 
 /** Provides an interface to Deno's CLI cache.

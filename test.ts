@@ -2,7 +2,7 @@
 
 import { assertEquals } from "@std/assert";
 import { createGraph } from "@deno/graph";
-import { join } from "./deps.ts";
+import { join } from "@std/path";
 import { createCache } from "./mod.ts";
 import { assert } from "./util.ts";
 
