@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. MIT license.
 
 import { isAbsolute } from "./deps.ts";
 import { assert } from "./util.ts";
@@ -23,7 +23,7 @@ export interface HttpCacheGetOptions {
   allowCopyGlobalToLocal?: boolean;
 }
 
-export class HttpCache {
+export class HttpCache implements Disposable {
   #createOptions: HttpCacheCreateOptions;
   #cache: LocalHttpCache | GlobalHttpCache | undefined;
   #readOnly: boolean | undefined;
@@ -40,6 +40,10 @@ export class HttpCache {
 
     this.#createOptions = options;
     this.#readOnly = options.readOnly;
+  }
+
+  [Symbol.dispose]() {
+    this.free();
   }
 
   async #ensureCache() {

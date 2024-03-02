@@ -4,18 +4,18 @@ on: [push, pull_request]
 
 jobs:
   deno:
-    name: deno_cache-${{ matrix.os }}
+    name: deno_cache_dir-${{ matrix.os }}
     if: |
       github.event_name == 'push' ||
       !startsWith(github.event.pull_request.head.label, 'denoland:')
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write
     timeout-minutes: 30
     strategy:
       matrix:
         os: [macOS-latest, ubuntu-latest, windows-latest]
-
-    env:
-      GH_ACTIONS: 1
 
     steps:
       - name: Clone repository
@@ -53,8 +53,25 @@ jobs:
       - name: Cargo publish
         if: |
           contains(matrix.os, 'ubuntu') &&
-          github.repository == 'denoland/deno_cache' &&
+          github.repository == 'denoland/deno_cache_dir' &&
           startsWith(github.ref, 'refs/tags/')
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: cargo publish -p deno_cache_dir
+
+      - name: Get tag version
+        if: |
+          contains(matrix.os, 'ubuntu') &&
+          github.repository == 'denoland/deno_cache_dir' &&
+          startsWith(github.ref, 'refs/tags/')
+        id: get_tag_version
+        run: echo TAG_VERSION=${GITHUB_REF/refs\/tags\//} >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        if: |
+          contains(matrix.os, 'ubuntu') &&
+          github.repository == 'denoland/deno_cache_dir' &&
+          startsWith(github.ref, 'refs/tags/')
+        run: |
+          deno run -A ./scripts/update_deno_json_version.ts ${{steps.get_tag_version.outputs.TAG_VERSION}}
+          deno publish

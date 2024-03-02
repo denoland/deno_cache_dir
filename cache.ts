@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. MIT license.
 
 import type { LoadResponse } from "./deps.ts";
 import type { CacheSetting, FileFetcher } from "./file_fetcher.ts";
