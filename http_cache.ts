@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. MIT license.
 
-import { isAbsolute } from "./deps.ts";
+import { isAbsolute } from "@std/path";
 import { assert } from "./util.ts";
 import {
   GlobalHttpCache,

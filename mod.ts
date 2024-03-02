@@ -33,7 +33,7 @@
  */
 
 import { FetchCacher } from "./cache.ts";
-import { type CacheInfo, type LoadResponse } from "./deps.ts";
+import type { CacheInfo, LoadResponse } from "@deno/graph";
 import { DenoDir } from "./deno_dir.ts";
 import { type CacheSetting, FileFetcher } from "./file_fetcher.ts";
 
@@ -57,11 +57,11 @@ export interface Loader {
   ): Promise<LoadResponse | undefined>;
 }
 
+export type { LoadResponse } from "@deno/graph";
 export type {
-  LoadResponse,
   LoadResponseExternal,
   LoadResponseModule,
-} from "./deps.ts";
+} from "@deno/graph/types";
 
 export interface CacheOptions {
   /** Allow remote URLs to be fetched if missing from the cache. This defaults

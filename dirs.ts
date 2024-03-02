@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. MIT license.
 
-import { join } from "./deps.ts";
+import { join } from "@std/path";
 
 export function cacheDir(): string | undefined {
   if (Deno.build.os === "darwin") {
