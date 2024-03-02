@@ -14,14 +14,11 @@ export {
   resolve,
   SEPARATOR,
 } from "@std/path";
-export { readAll, writeAll, } from "@std/io";
+export { readAll, writeAll } from "@std/io";
 
 // type only dependencies of `deno_graph`
 
-export type {
-  CacheInfo,
-  LoadResponse,
-} from "@deno/graph";
+export type { CacheInfo, LoadResponse } from "@deno/graph";
 export type {
   LoadResponseExternal,
   LoadResponseModule,

@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. MIT license.
 
 import { assertEquals } from "@std/assert";
-import { createGraph } from "@deno/graph"
+import { createGraph } from "@deno/graph";
 import { join } from "./deps.ts";
 import { createCache } from "./mod.ts";
 import { assert } from "./util.ts";
