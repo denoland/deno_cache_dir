@@ -1,7 +1,7 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. MIT license.
 
 import { AuthTokens } from "./auth_tokens.ts";
-import { assertEquals } from "./deps_test.ts";
+import { assertEquals } from "@std/assert";
 
 Deno.test({
   name: "handle undefined token string",

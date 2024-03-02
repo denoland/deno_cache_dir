@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. MIT license.
 
 import { isAbsolute, join, normalize, resolve } from "./deps.ts";
 import { DiskCache } from "./disk_cache.ts";
@@ -26,8 +26,8 @@ export class DenoDir {
 
   createHttpCache(
     options?: { vendorRoot?: string | URL; readOnly?: boolean },
-  ): HttpCache {
-    return new HttpCache({
+  ): Promise<HttpCache> {
+    return HttpCache.create({
       root: join(this.root, "deps"),
       vendorRoot: options?.vendorRoot == null
         ? undefined

@@ -1,14 +1,13 @@
-# deno_cache
+# deno_cache_dir
 
-[![deno doc](https://doc.deno.land/badge.svg)](https://doc.deno.land/https://deno.land/x/deno_cache/mod.ts)
-[![Build Status - Cirrus][]][Build status] [![Twitter handle][]][Twitter badge]
+[![jsr](https://jsr.io/badges/@deno/cache-dir)](https://jsr.io/@deno/cache-dir)
+[![Build Status - Cirrus][]][Build status]
 [![](https://img.shields.io/crates/v/deno_cache_dir.svg)](https://crates.io/crates/deno_cache_dir)
-[![Discord Chat](https://img.shields.io/discord/684898665143206084?logo=discord&style=social)](https://discord.gg/deno)
 
 Implementation of the DENO_DIR/cache for the Deno CLI.
 
 This is designed to provide access to the cache using the same logic that the
-Deno CLI accesses the cache, which allows items like
+Deno CLI accesses the cache, which allows projects like
 [`deno_graph`](https://deno.land/x/deno_graph),
 [`deno_doc`](https://deno.land/x/deno_doc), [`dnt`](https://deno.land/x/dnt),
 and [`emit`](https://deno.land/x/deno_emit) to access and populate the cache in
@@ -36,11 +35,16 @@ This can just be granted on startup to avoid being prompted for them.
 
 ## Example
 
+```shellsession
+> deno add @deno/cache-dir
+> deno add @deno/graph
+```
+
 Using the cache and the file fetcher to provide modules to build a module graph:
 
 ```ts
-import { createCache } from "https://deno.land/x/deno_cache/mod.ts";
-import { createGraph } from "https://deno.land/x/deno_graph/mod.ts";
+import { createCache } from "@deno/cache-dir";
+import { createGraph } from "@deno/graph";
 
 // create a cache where the location will be determined environmentally
 const cache = createCache();
@@ -54,8 +58,3 @@ const graph = await createGraph("https://deno.land/x/oak@v9.0.1/mod.ts", {
 // log out the console a similar output to `deno info` on the command line.
 console.log(graph.toString());
 ```
-
-[Build Status - Cirrus]: https://github.com/denoland/deno_cache/workflows/ci/badge.svg?branch=main&event=push
-[Build status]: https://github.com/denoland/deno_cache/actions
-[Twitter badge]: https://twitter.com/intent/follow?screen_name=deno_land
-[Twitter handle]: https://img.shields.io/twitter/follow/deno_land.svg?style=social&label=Follow

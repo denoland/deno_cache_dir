@@ -1,6 +1,6 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. MIT license.
 
-import { assertEquals, assertRejects } from "./deps_test.ts";
+import { assertEquals, assertRejects } from "@std/assert";
 import { DiskCache } from "./disk_cache.ts";
 
 Deno.test({

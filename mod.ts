@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. MIT license.
 
 /**
  * A module which provides a TypeScript implementation of the Deno CLI's cache
@@ -12,8 +12,8 @@
  * ### Example
  *
  * ```ts
- * import { createCache } from "https://deno.land/x/deno_cache/mod.ts";
- * import { createGraph } from "https://deno.land/x/deno_graph/mod.ts";
+ * import { createCache } from "@deno/cache-dir";
+ * import { createGraph } from "@deno/graph";
  *
  * // create a cache where the location will be determined environmentally
  * const cache = createCache();
@@ -95,10 +95,15 @@ export function createCache({
   vendorRoot,
 }: CacheOptions = {}): Loader {
   const denoDir = new DenoDir(root);
-  const cache = denoDir.createHttpCache({
-    readOnly,
-    vendorRoot,
-  });
-  const fileFetcher = new FileFetcher(cache, cacheSetting, allowRemote);
+  const fileFetcher = new FileFetcher(
+    () => {
+      return denoDir.createHttpCache({
+        readOnly,
+        vendorRoot,
+      });
+    },
+    cacheSetting,
+    allowRemote,
+  );
   return new FetchCacher(fileFetcher);
 }

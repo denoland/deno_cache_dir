@@ -1,21 +1,13 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. MIT license.
 
-import { assertEquals, assertRejects } from "./deps_test.ts";
+import { assertEquals, assertThrows } from "@std/assert";
 import { DenoDir } from "./deno_dir.ts";
-import { assert } from "./util.ts";
 import { withTempDir } from "./deps_test.ts";
 
 Deno.test({
   name: "DenoDir - basic",
   async fn() {
-    const denoDir = new DenoDir();
-    const url = new URL("https://deno.land/std@0.140.0/path/mod.ts");
-    const deps = denoDir.createHttpCache();
-    const headers = (await deps.getHeaders(url))!;
-    assert(Object.keys(headers).length > 10);
-    const text = new TextDecoder().decode(await deps.get(url, undefined));
-    assertEquals(
-      text,
+    const expectedText =
       `// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 // Copyright the Browserify authors. MIT License.
 
@@ -55,11 +47,21 @@ export * from "./common.ts";
 export { SEP, SEP_PATTERN } from "./separator.ts";
 export * from "./_interface.ts";
 export * from "./glob.ts";
-`,
-    );
+`;
+    const denoDir = new DenoDir();
+    const url = new URL("https://deno.land/std@0.140.0/path/mod.ts");
+    const expectedHeaders = {
+      "content-type": "application/typescript",
+    };
+    const deps = await denoDir.createHttpCache();
+    deps.set(url, expectedHeaders, new TextEncoder().encode(expectedText));
+    const headers = deps.getHeaders(url)!;
+    assertEquals(headers, expectedHeaders);
+    const text = new TextDecoder().decode(deps.get(url, undefined));
+    assertEquals(text, expectedText);
 
     // ok
-    await deps.get(
+    deps.get(
       url,
       {
         checksum:
@@ -67,8 +69,8 @@ export * from "./glob.ts";
       },
     );
     // not ok
-    await assertRejects(async () =>
-      await deps.get(url, {
+    assertThrows(() =>
+      deps.get(url, {
         checksum: "invalid",
       })
     );
@@ -80,7 +82,7 @@ Deno.test({
   async fn() {
     const denoDir = new DenoDir();
     const url = new URL("https://deno.land/std@0.140.0/path/mod.ts");
-    const deps = denoDir.createHttpCache();
+    const deps = await denoDir.createHttpCache();
     // disallow will still work because we're using a global cache
     // which is not affected by this option
     const text = await deps.get(url, {
@@ -96,19 +98,19 @@ Deno.test({
     await withTempDir(async (tempDir) => {
       const denoDir = new DenoDir();
       const url = new URL("https://deno.land/std@0.140.0/path/mod.ts");
-      const deps = denoDir.createHttpCache({
+      const deps = await denoDir.createHttpCache({
         vendorRoot: tempDir,
       });
       // disallow
       {
-        const text = await deps.get(url, {
+        const text = deps.get(url, {
           allowCopyGlobalToLocal: false,
         });
         assertEquals(text, undefined);
       }
       // allow
       {
-        const text = await deps.get(url, {
+        const text = deps.get(url, {
           allowCopyGlobalToLocal: true,
         });
         assertEquals(text!.length, 820);

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. MIT license.
 
 import { isAbsolute } from "./deps.ts";
 import { assert } from "./util.ts";
@@ -23,12 +23,19 @@ export interface HttpCacheGetOptions {
   allowCopyGlobalToLocal?: boolean;
 }
 
-export class HttpCache {
-  #createOptions: HttpCacheCreateOptions;
-  #cache: LocalHttpCache | GlobalHttpCache | undefined;
+export class HttpCache implements Disposable {
+  #cache: LocalHttpCache | GlobalHttpCache;
   #readOnly: boolean | undefined;
 
-  constructor(options: HttpCacheCreateOptions) {
+  private constructor(
+    cache: LocalHttpCache | GlobalHttpCache,
+    readOnly: boolean | undefined,
+  ) {
+    this.#cache = cache;
+    this.#readOnly = readOnly;
+  }
+
+  static async create(options: HttpCacheCreateOptions): Promise<HttpCache> {
     assert(isAbsolute(options.root), "Root must be an absolute path.");
 
     if (options.vendorRoot != null) {
@@ -37,41 +44,37 @@ export class HttpCache {
         "Vendor root must be an absolute path.",
       );
     }
+    const { GlobalHttpCache, LocalHttpCache } = await instantiate();
 
-    this.#createOptions = options;
-    this.#readOnly = options.readOnly;
+    let cache: LocalHttpCache | GlobalHttpCache;
+    if (options.vendorRoot != null) {
+      cache = LocalHttpCache.new(options.vendorRoot, options.root);
+    } else {
+      cache = GlobalHttpCache.new(options.root);
+    }
+    return new HttpCache(cache, options.readOnly);
   }
 
-  async #ensureCache() {
-    if (this.#cache == null) {
-      const { GlobalHttpCache, LocalHttpCache } = await instantiate();
-      const options = this.#createOptions;
-
-      if (options.vendorRoot != null) {
-        this.#cache = LocalHttpCache.new(options.vendorRoot, options.root);
-      } else {
-        this.#cache = GlobalHttpCache.new(options.root);
-      }
-    }
-    return this.#cache;
+  [Symbol.dispose]() {
+    this.free();
   }
 
   free() {
     this.#cache?.free();
   }
 
-  async getHeaders(
+  getHeaders(
     url: URL,
-  ): Promise<Record<string, string> | undefined> {
-    const map = (await this.#ensureCache()).getHeaders(url.toString());
+  ): Record<string, string> | undefined {
+    const map = this.#cache.getHeaders(url.toString());
     return map == null ? undefined : Object.fromEntries(map);
   }
 
-  async get(
+  get(
     url: URL,
     options?: HttpCacheGetOptions,
-  ): Promise<Uint8Array | undefined> {
-    const data = (await this.#ensureCache()).getFileBytes(
+  ): Uint8Array | undefined {
+    const data = this.#cache.getFileBytes(
       url.toString(),
       options?.checksum,
       options?.allowCopyGlobalToLocal ?? true,
@@ -79,11 +82,11 @@ export class HttpCache {
     return data == null ? undefined : data;
   }
 
-  async set(
+  set(
     url: URL,
     headers: Record<string, string>,
     content: Uint8Array,
-  ): Promise<void> {
+  ): void {
     if (this.#readOnly === undefined) {
       this.#readOnly =
         (Deno.permissions.querySync({ name: "write" })).state === "denied"
@@ -93,7 +96,7 @@ export class HttpCache {
     if (this.#readOnly) {
       return;
     }
-    (await this.#ensureCache()).set(
+    this.#cache.set(
       url.toString(),
       headers,
       content,
