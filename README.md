@@ -36,8 +36,8 @@ This can just be granted on startup to avoid being prompted for them.
 ## Example
 
 ```shellsession
-deno add @deno/cache-dir
-deno add @deno/graph
+> deno add @deno/cache-dir
+> deno add @deno/graph
 ```
 
 Using the cache and the file fetcher to provide modules to build a module graph:
