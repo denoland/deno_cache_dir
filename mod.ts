@@ -95,10 +95,15 @@ export function createCache({
   vendorRoot,
 }: CacheOptions = {}): Loader {
   const denoDir = new DenoDir(root);
-  const cache = denoDir.createHttpCache({
-    readOnly,
-    vendorRoot,
-  });
-  const fileFetcher = new FileFetcher(cache, cacheSetting, allowRemote);
+  const fileFetcher = new FileFetcher(
+    () => {
+      return denoDir.createHttpCache({
+        readOnly,
+        vendorRoot,
+      });
+    },
+    cacheSetting,
+    allowRemote,
+  );
   return new FetchCacher(fileFetcher);
 }

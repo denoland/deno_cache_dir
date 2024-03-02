@@ -8,7 +8,7 @@ Deno.test({
   name: "FileFetcher",
   async fn() {
     const denoDir = new DenoDir();
-    const fileFetcher = new FileFetcher(denoDir.createHttpCache());
+    const fileFetcher = new FileFetcher(() => denoDir.createHttpCache());
     const graph = await createGraph("https://deno.land/x/oak@v10.5.1/mod.ts", {
       load(specifier) {
         return fileFetcher.fetch(new URL(specifier));
@@ -23,7 +23,7 @@ Deno.test({
   name: "FileFetcher - bad checksum no cache",
   async fn() {
     const denoDir = new DenoDir();
-    const fileFetcher = new FileFetcher(denoDir.createHttpCache());
+    const fileFetcher = new FileFetcher(() => denoDir.createHttpCache());
     {
       // should error
       await assertRejects(async () => {
@@ -50,7 +50,7 @@ Deno.test({
   name: "FileFetcher - bad checksum reload",
   async fn() {
     const denoDir = new DenoDir();
-    const fileFetcher = new FileFetcher(denoDir.createHttpCache());
+    const fileFetcher = new FileFetcher(() => denoDir.createHttpCache());
     await assertRejects(async () => {
       await fileFetcher.fetch(
         new URL("https://deno.land/x/oak@v10.5.1/mod.ts"),
@@ -67,7 +67,7 @@ Deno.test({
   name: "FileFetcher - good checksum reload",
   async fn() {
     const denoDir = new DenoDir();
-    const fileFetcher = new FileFetcher(denoDir.createHttpCache());
+    const fileFetcher = new FileFetcher(() => denoDir.createHttpCache());
     await fileFetcher.fetch(new URL("https://deno.land/x/oak@v10.5.1/mod.ts"), {
       cacheSetting: "reload",
       checksum:

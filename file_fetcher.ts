@@ -115,10 +115,12 @@ export class FileFetcher {
   #authTokens: AuthTokens;
   #cache = new Map<string, LoadResponse>();
   #cacheSetting: CacheSetting;
-  #httpCache: HttpCache;
+  #httpCache: HttpCache | undefined;
+  #httpCachePromise: Promise<HttpCache> | undefined;
+  #httpCacheFactory: () => Promise<HttpCache>;
 
   constructor(
-    httpCache: HttpCache,
+    httpCacheFactory: () => Promise<HttpCache>,
     cacheSetting: CacheSetting = "use",
     allowRemote = true,
   ) {
@@ -126,14 +128,15 @@ export class FileFetcher {
     this.#authTokens = new AuthTokens(Deno.env.get("DENO_AUTH_TOKENS"));
     this.#allowRemote = allowRemote;
     this.#cacheSetting = cacheSetting;
-    this.#httpCache = httpCache;
+    this.#httpCacheFactory = httpCacheFactory;
   }
 
   async #fetchBlobDataUrl(
     specifier: URL,
     options: ResolvedFetchOptions,
+    httpCache: HttpCache,
   ): Promise<LoadResponse> {
-    const cached = await this.#fetchCached(specifier, 0, options);
+    const cached = this.#fetchCached(specifier, 0, options, httpCache);
     if (cached) {
       return cached;
     }
@@ -150,7 +153,7 @@ export class FileFetcher {
     for (const [key, value] of response.headers) {
       headers[key.toLowerCase()] = value;
     }
-    await this.#httpCache.set(specifier, headers, content);
+    httpCache.set(specifier, headers, content);
     return {
       kind: "module",
       specifier: specifier.toString(),
@@ -159,27 +162,28 @@ export class FileFetcher {
     };
   }
 
-  async #fetchCached(
+  #fetchCached(
     specifier: URL,
     redirectLimit: number,
     options: ResolvedFetchOptions,
-  ): Promise<LoadResponse | undefined> {
+    httpCache: HttpCache,
+  ): LoadResponse | undefined {
     if (redirectLimit < 0) {
       throw new Deno.errors.Http(
         `Too many redirects.\n  Specifier: "${specifier.toString()}"`,
       );
     }
 
-    const headers = await this.#httpCache.getHeaders(specifier);
+    const headers = httpCache.getHeaders(specifier);
     if (!headers) {
       return undefined;
     }
     const location = headers["location"];
     if (location != null && location.length > 0) {
       const redirect = new URL(location, specifier);
-      return this.#fetchCached(redirect, redirectLimit - 1, options);
+      return this.#fetchCached(redirect, redirectLimit - 1, options, httpCache);
     }
-    const content = await this.#httpCache.get(specifier, options);
+    const content = httpCache.get(specifier, options);
     if (content == null) {
       return undefined;
     }
@@ -195,6 +199,7 @@ export class FileFetcher {
     specifier: URL,
     redirectLimit: number,
     options: ResolvedFetchOptions,
+    httpCache: HttpCache,
   ): Promise<LoadResponse | undefined> {
     if (redirectLimit < 0) {
       throw new Deno.errors.Http(
@@ -203,10 +208,11 @@ export class FileFetcher {
     }
 
     if (shouldUseCache(options.cacheSetting, specifier)) {
-      const response = await this.#fetchCached(
+      const response = this.#fetchCached(
         specifier,
         redirectLimit,
         options,
+        httpCache,
       );
       if (response) {
         return response;
@@ -220,7 +226,7 @@ export class FileFetcher {
     }
 
     const requestHeaders = new Headers();
-    const cachedHeaders = await this.#httpCache.getHeaders(specifier);
+    const cachedHeaders = httpCache.getHeaders(specifier);
     if (cachedHeaders) {
       const etag = cachedHeaders["etag"];
       if (etag != null && etag.length > 0) {
@@ -247,7 +253,7 @@ export class FileFetcher {
     // determine if that occurred and cache the value.
     if (specifier.toString() !== response.url) {
       const headers = { "location": response.url };
-      await this.#httpCache.set(specifier, headers, new Uint8Array());
+      httpCache.set(specifier, headers, new Uint8Array());
     }
     const url = new URL(response.url);
     const content = new Uint8Array(await response.arrayBuffer());
@@ -255,7 +261,7 @@ export class FileFetcher {
     for (const [key, value] of response.headers) {
       headers[key.toLowerCase()] = value;
     }
-    await this.#httpCache.set(url, headers, content);
+    httpCache.set(url, headers, content);
     if (options?.checksum != null) {
       const digest = await crypto.subtle.digest("SHA-256", content);
       const actualChecksum = Array.from(new Uint8Array(digest))
@@ -290,6 +296,7 @@ export class FileFetcher {
       const response = await this.#fetchBlobDataUrl(
         specifier,
         this.#resolveOptions(options),
+        await this.#resolveHttpCache(),
       );
       await this.#cache.set(specifier.toString(), response);
       return response;
@@ -302,6 +309,7 @@ export class FileFetcher {
         specifier,
         10,
         this.#resolveOptions(options),
+        await this.#resolveHttpCache(),
       );
       if (response) {
         await this.#cache.set(specifier.toString(), response);
@@ -314,6 +322,20 @@ export class FileFetcher {
     options ??= {};
     options.cacheSetting = options.cacheSetting ?? this.#cacheSetting;
     return options as ResolvedFetchOptions;
+  }
+
+  #resolveHttpCache(): Promise<HttpCache> {
+    if (this.#httpCache != null) {
+      return Promise.resolve(this.#httpCache);
+    }
+    if (!this.#httpCachePromise) {
+      this.#httpCachePromise = this.#httpCacheFactory().then((cache) => {
+        this.#httpCache = cache;
+        this.#httpCachePromise = undefined;
+        return cache;
+      });
+    }
+    return this.#httpCachePromise;
   }
 }
 
