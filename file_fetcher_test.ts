@@ -68,10 +68,13 @@ Deno.test({
   async fn() {
     const denoDir = new DenoDir();
     const fileFetcher = new FileFetcher(() => denoDir.createHttpCache());
-    await fileFetcher.fetchOnce(new URL("https://deno.land/x/oak@v10.5.1/mod.ts"), {
-      cacheSetting: "reload",
-      checksum:
-        "7a1b5169ef702e96dd994168879dbcbd8af4f639578b6300cbe1c6995d7f3f32",
-    });
+    await fileFetcher.fetchOnce(
+      new URL("https://deno.land/x/oak@v10.5.1/mod.ts"),
+      {
+        cacheSetting: "reload",
+        checksum:
+          "7a1b5169ef702e96dd994168879dbcbd8af4f639578b6300cbe1c6995d7f3f32",
+      },
+    );
   },
 });

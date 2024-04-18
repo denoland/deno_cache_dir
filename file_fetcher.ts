@@ -275,7 +275,8 @@ export class FileFetcher {
     // Providing a checksum here doesn't make sense because the provided
     // checksum will change based on the specifier being requested, which
     // could be invalided by a redirect
-    options?: Omit<FetchOptions, "checksum">) {
+    options?: Omit<FetchOptions, "checksum">,
+  ): Promise<LoadResponse | undefined> {
     for (let i = 0; i <= 10; i++) {
       const response = await this.fetchOnce(specifier, options);
       if (response?.kind !== "redirect") {
