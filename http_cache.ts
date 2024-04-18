@@ -3,9 +3,9 @@
 import { isAbsolute } from "@std/path";
 import { assert } from "./util.ts";
 import {
-  GlobalHttpCache,
+  type GlobalHttpCache,
   instantiate,
-  LocalHttpCache,
+  type LocalHttpCache,
 } from "./lib/deno_cache_dir.generated.js";
 
 export interface HttpCacheCreateOptions {

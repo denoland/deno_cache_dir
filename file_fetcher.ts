@@ -137,7 +137,7 @@ export class FileFetcher {
     options: ResolvedFetchOptions,
     httpCache: HttpCache,
   ): Promise<LoadResponse> {
-    const cached = this.#fetchCached(specifier, 0, options, httpCache);
+    const cached = this.fetchCachedOnce(specifier, options, httpCache);
     if (cached) {
       return cached;
     }
@@ -163,18 +163,11 @@ export class FileFetcher {
     };
   }
 
-  #fetchCached(
+  fetchCachedOnce(
     specifier: URL,
-    redirectLimit: number,
     options: ResolvedFetchOptions,
     httpCache: HttpCache,
   ): LoadResponse | undefined {
-    if (redirectLimit < 0) {
-      throw new Deno.errors.Http(
-        `Too many redirects.\n  Specifier: "${specifier.toString()}"`,
-      );
-    }
-
     const headers = httpCache.getHeaders(specifier);
     if (!headers) {
       return undefined;
@@ -182,7 +175,10 @@ export class FileFetcher {
     const location = headers["location"];
     if (location != null && location.length > 0) {
       const redirect = new URL(location, specifier);
-      return this.#fetchCached(redirect, redirectLimit - 1, options, httpCache);
+      return {
+        kind: "redirect",
+        specifier: redirect.toString(),
+      };
     }
     const content = httpCache.get(specifier, options);
     if (content == null) {
@@ -196,22 +192,14 @@ export class FileFetcher {
     };
   }
 
-  async #fetchRemote(
+  async #fetchRemoteOnce(
     specifier: URL,
-    redirectLimit: number,
     options: ResolvedFetchOptions,
     httpCache: HttpCache,
   ): Promise<LoadResponse | undefined> {
-    if (redirectLimit < 0) {
-      throw new Deno.errors.Http(
-        `Too many redirects.\n  Specifier: "${specifier.toString()}"`,
-      );
-    }
-
     if (shouldUseCache(options.cacheSetting, specifier)) {
-      const response = this.#fetchCached(
+      const response = this.fetchCachedOnce(
         specifier,
-        redirectLimit,
         options,
         httpCache,
       );
@@ -284,6 +272,24 @@ export class FileFetcher {
 
   async fetch(
     specifier: URL,
+    // Providing a checksum here doesn't make sense because the provided
+    // checksum will change based on the specifier being requested, which
+    // could be invalided by a redirect
+    options?: Omit<FetchOptions, "checksum">) {
+    for (let i = 0; i <= 10; i++) {
+      const response = await this.fetchOnce(specifier, options);
+      if (response?.kind !== "redirect") {
+        return response;
+      }
+      specifier = new URL(response.specifier);
+    }
+    throw new Deno.errors.Http(
+      `Too many redirects.\n  Specifier: "${specifier.toString()}"`,
+    );
+  }
+
+  async fetchOnce(
+    specifier: URL,
     options?: FetchOptions,
   ): Promise<LoadResponse | undefined> {
     const scheme = getValidatedScheme(specifier);
@@ -306,9 +312,8 @@ export class FileFetcher {
         `A remote specifier was requested: "${specifier.toString()}", but --no-remote is specified.`,
       );
     } else {
-      const response = await this.#fetchRemote(
+      const response = await this.#fetchRemoteOnce(
         specifier,
-        10,
         this.#resolveOptions(options),
         await this.#resolveHttpCache(),
       );

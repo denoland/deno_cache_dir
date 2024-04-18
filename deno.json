@@ -26,10 +26,10 @@
   "exports": "./mod.ts",
   "imports": {
     "@deno/graph": "jsr:@deno/graph@^0.69.7",
-    "@std/assert": "jsr:@std/assert@^0.218.2",
-    "@std/fmt": "jsr:@std/fmt@^0.218.2",
-    "@std/fs": "jsr:@std/fs@^0.218.2",
-    "@std/io": "jsr:@std/io@^0.218.2",
-    "@std/path": "jsr:@std/path@^0.218.2"
+    "@std/assert": "jsr:@std/assert@^0.223",
+    "@std/fmt": "jsr:@std/fmt@^0.223",
+    "@std/fs": "jsr:@std/fs@^0.223",
+    "@std/io": "jsr:@std/io@^0.223",
+    "@std/path": "jsr:@std/path@^0.223"
   }
 }
