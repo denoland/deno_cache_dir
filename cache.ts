@@ -21,6 +21,6 @@ export class FetchCacher {
     checksum?: string,
   ): Promise<LoadResponse | undefined> => {
     const url = new URL(specifier);
-    return this.#fileFetcher.fetch(url, { cacheSetting, checksum });
+    return this.#fileFetcher.fetchOnce(url, { cacheSetting, checksum });
   };
 }

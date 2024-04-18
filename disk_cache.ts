@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. MIT license.
 
-import { ensureDir } from "@std/fs/ensure_dir";
+import { ensureDir } from "@std/fs/ensure-dir";
 import { dirname, isAbsolute, join } from "@std/path";
 import { readAll, writeAll } from "@std/io";
 import { assert, CACHE_PERM } from "./util.ts";

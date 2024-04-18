@@ -27,7 +27,7 @@ Deno.test({
     {
       // should error
       await assertRejects(async () => {
-        await fileFetcher.fetch(
+        await fileFetcher.fetchOnce(
           new URL("https://deno.land/x/oak@v10.5.1/mod.ts"),
           {
             checksum: "bad",
@@ -35,7 +35,7 @@ Deno.test({
         );
       });
       // ok for good checksum
-      await fileFetcher.fetch(
+      await fileFetcher.fetchOnce(
         new URL("https://deno.land/x/oak@v10.5.1/mod.ts"),
         {
           checksum:
@@ -52,7 +52,7 @@ Deno.test({
     const denoDir = new DenoDir();
     const fileFetcher = new FileFetcher(() => denoDir.createHttpCache());
     await assertRejects(async () => {
-      await fileFetcher.fetch(
+      await fileFetcher.fetchOnce(
         new URL("https://deno.land/x/oak@v10.5.1/mod.ts"),
         {
           cacheSetting: "reload",
@@ -68,10 +68,13 @@ Deno.test({
   async fn() {
     const denoDir = new DenoDir();
     const fileFetcher = new FileFetcher(() => denoDir.createHttpCache());
-    await fileFetcher.fetch(new URL("https://deno.land/x/oak@v10.5.1/mod.ts"), {
-      cacheSetting: "reload",
-      checksum:
-        "7a1b5169ef702e96dd994168879dbcbd8af4f639578b6300cbe1c6995d7f3f32",
-    });
+    await fileFetcher.fetchOnce(
+      new URL("https://deno.land/x/oak@v10.5.1/mod.ts"),
+      {
+        cacheSetting: "reload",
+        checksum:
+          "7a1b5169ef702e96dd994168879dbcbd8af4f639578b6300cbe1c6995d7f3f32",
+      },
+    );
   },
 });
