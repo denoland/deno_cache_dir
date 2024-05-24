@@ -1,8 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use anyhow::Error as AnyError;
 use serde::Deserialize;
 use serde::Serialize;
+use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::time::SystemTime;
 use thiserror::Error;
@@ -52,24 +52,17 @@ impl<'a> Checksum<'a> {
   }
 }
 
-#[derive(Debug, Error)]
-#[error("Can't convert url (\"{}\") to filename.", .url)]
-pub struct UrlToFilenameConversionError {
-  pub(super) url: String,
-}
-
 /// Turn provided `url` into a hashed filename.
 /// URLs can contain a lot of characters that cannot be used
 /// in filenames (like "?", "#", ":"), so in order to cache
 /// them properly they are deterministically hashed into ASCII
 /// strings.
-pub fn url_to_filename(
-  url: &Url,
-) -> Result<PathBuf, UrlToFilenameConversionError> {
+pub fn url_to_filename(url: &Url) -> std::io::Result<PathBuf> {
   let Some(mut cache_filename) = base_url_to_filename(url) else {
-    return Err(UrlToFilenameConversionError {
-      url: url.to_string(),
-    });
+    return Err(std::io::Error::new(
+      ErrorKind::InvalidInput,
+      format!("Can't convert url (\"{}\") to filename.", url),
+    ));
   };
 
   let mut rest_str = url.path().to_string();
@@ -104,11 +97,7 @@ pub enum CacheReadFileError {
   #[error(transparent)]
   Io(#[from] std::io::Error),
   #[error(transparent)]
-  UrlToFileName(#[from] UrlToFilenameConversionError),
-  #[error(transparent)]
   ChecksumIntegrity(Box<ChecksumIntegrityError>),
-  #[error(transparent)]
-  ReadHeaders(anyhow::Error),
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -139,7 +128,7 @@ pub trait HttpCache: Send + Sync + std::fmt::Debug {
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
-  ) -> Result<HttpCacheItemKey<'a>, UrlToFilenameConversionError>;
+  ) -> std::io::Result<HttpCacheItemKey<'a>>;
 
   fn contains(&self, url: &Url) -> bool;
   fn set(
@@ -147,11 +136,11 @@ pub trait HttpCache: Send + Sync + std::fmt::Debug {
     url: &Url,
     headers: HeadersMap,
     content: &[u8],
-  ) -> Result<(), AnyError>;
+  ) -> std::io::Result<()>;
   fn read_modified_time(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<SystemTime>, AnyError>;
+  ) -> std::io::Result<Option<SystemTime>>;
   fn read_file_bytes(
     &self,
     key: &HttpCacheItemKey,
@@ -162,12 +151,12 @@ pub trait HttpCache: Send + Sync + std::fmt::Debug {
   fn read_headers(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<HeadersMap>, AnyError>;
+  ) -> std::io::Result<Option<HeadersMap>>;
   /// Reads the time the item was downloaded to the cache.
   fn read_download_time(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<SystemTime>, AnyError>;
+  ) -> std::io::Result<Option<SystemTime>>;
 }
 
 #[cfg(test)]

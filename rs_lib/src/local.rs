@@ -2,12 +2,12 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use anyhow::Error as AnyError;
 use deno_media_type::MediaType;
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
@@ -17,7 +17,6 @@ use url::Url;
 use crate::cache::CacheReadFileError;
 use crate::cache::GlobalToLocalCopy;
 
-use super::cache::UrlToFilenameConversionError;
 use super::common::base_url_to_filename_parts;
 use super::common::checksum;
 use super::common::HeadersMap;
@@ -138,7 +137,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalLspHttpCache<Env> {
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
-  ) -> Result<HttpCacheItemKey<'a>, UrlToFilenameConversionError> {
+  ) -> std::io::Result<HttpCacheItemKey<'a>> {
     self.cache.cache_item_key(url)
   }
 
@@ -151,14 +150,14 @@ impl<Env: DenoCacheEnv> HttpCache for LocalLspHttpCache<Env> {
     url: &Url,
     headers: HeadersMap,
     content: &[u8],
-  ) -> Result<(), AnyError> {
+  ) -> std::io::Result<()> {
     self.cache.set(url, headers, content)
   }
 
   fn read_modified_time(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<SystemTime>, AnyError> {
+  ) -> std::io::Result<Option<SystemTime>> {
     self.cache.read_modified_time(key)
   }
 
@@ -176,14 +175,14 @@ impl<Env: DenoCacheEnv> HttpCache for LocalLspHttpCache<Env> {
   fn read_headers(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<HeadersMap>, AnyError> {
+  ) -> std::io::Result<Option<HeadersMap>> {
     self.cache.read_headers(key)
   }
 
   fn read_download_time(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<SystemTime>, AnyError> {
+  ) -> std::io::Result<Option<SystemTime>> {
     self.cache.read_modified_time(key)
   }
 }
@@ -215,7 +214,7 @@ impl<Env: DenoCacheEnv> LocalHttpCache<Env> {
     &self.global_cache.env
   }
 
-  fn get_url_headers(&self, url: &Url) -> Result<Option<HeadersMap>, AnyError> {
+  fn get_url_headers(&self, url: &Url) -> std::io::Result<Option<HeadersMap>> {
     if let Some(metadata) = self.manifest.get_stored_headers(url) {
       return Ok(Some(metadata));
     }
@@ -251,7 +250,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
-  ) -> Result<HttpCacheItemKey<'a>, UrlToFilenameConversionError> {
+  ) -> std::io::Result<HttpCacheItemKey<'a>> {
     Ok(HttpCacheItemKey {
       #[cfg(debug_assertions)]
       is_local_key: true,
@@ -271,7 +270,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
   fn read_modified_time(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<SystemTime>, AnyError> {
+  ) -> std::io::Result<Option<SystemTime>> {
     #[cfg(debug_assertions)]
     debug_assert!(key.is_local_key);
 
@@ -296,7 +295,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
     url: &Url,
     headers: HeadersMap,
     content: &[u8],
-  ) -> Result<(), AnyError> {
+  ) -> std::io::Result<()> {
     let is_redirect = headers.contains_key("location");
     let sub_path = url_to_local_sub_path(url, headers_content_type(&headers))?;
 
@@ -321,9 +320,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
     #[cfg(debug_assertions)]
     debug_assert!(key.is_local_key);
 
-    let maybe_headers = self
-      .get_url_headers(key.url)
-      .map_err(CacheReadFileError::ReadHeaders)?;
+    let maybe_headers = self.get_url_headers(key.url)?;
     match maybe_headers {
       Some(headers) => {
         let is_redirect = headers.contains_key("location");
@@ -365,7 +362,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
   fn read_headers(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<HeadersMap>, AnyError> {
+  ) -> std::io::Result<Option<HeadersMap>> {
     #[cfg(debug_assertions)]
     debug_assert!(key.is_local_key);
 
@@ -375,7 +372,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
   fn read_download_time(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<SystemTime>, AnyError> {
+  ) -> std::io::Result<Option<SystemTime>> {
     // This will never be called for the local cache in practice
     // because only the LSP ever reads this time for telling if
     // a file should be re-downloaded when respecting cache headers
@@ -414,7 +411,7 @@ fn headers_content_type(headers: &HeadersMap) -> Option<&str> {
 fn url_to_local_sub_path(
   url: &Url,
   content_type: Option<&str>,
-) -> Result<LocalCacheSubPath, UrlToFilenameConversionError> {
+) -> std::io::Result<LocalCacheSubPath> {
   // https://stackoverflow.com/a/31976060/188246
   static FORBIDDEN_CHARS: Lazy<HashSet<char>> = Lazy::new(|| {
     HashSet::from(['?', '<', '>', ':', '*', '|', '\\', ':', '"', '\'', '/'])
@@ -517,9 +514,10 @@ fn url_to_local_sub_path(
   let port_separator = "_"; // make this shorter with just an underscore
   let Some(mut base_parts) = base_url_to_filename_parts(url, port_separator)
   else {
-    return Err(UrlToFilenameConversionError {
-      url: url.to_string(),
-    });
+    return Err(std::io::Error::new(
+      ErrorKind::InvalidInput,
+      format!("Can't convert url (\"{}\") to filename.", url),
+    ));
   };
 
   if base_parts[0] == "https" {

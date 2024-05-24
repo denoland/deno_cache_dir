@@ -1,10 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use anyhow::Error as AnyError;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use url::Url;
@@ -17,7 +17,6 @@ use crate::cache::CacheReadFileError;
 use crate::cache::Checksum;
 use crate::cache::GlobalToLocalCopy;
 use crate::cache::SerializedCachedUrlMetadata;
-use crate::cache::UrlToFilenameConversionError;
 use crate::common::checksum;
 use crate::common::HeadersMap;
 use crate::ChecksumIntegrityError;
@@ -42,14 +41,11 @@ impl<Env: DenoCacheEnv> GlobalHttpCache<Env> {
   pub fn get_global_cache_filepath(
     &self,
     url: &Url,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> std::io::Result<PathBuf> {
     Ok(self.path.join(url_to_filename(url)?))
   }
 
-  fn get_cache_filepath(
-    &self,
-    url: &Url,
-  ) -> Result<PathBuf, UrlToFilenameConversionError> {
+  fn get_cache_filepath(&self, url: &Url) -> std::io::Result<PathBuf> {
     Ok(self.path.join(url_to_filename(url)?))
   }
 
@@ -64,11 +60,15 @@ impl<Env: DenoCacheEnv> GlobalHttpCache<Env> {
   fn read_serialized_cache_metadata<T: DeserializeOwned>(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<T>, AnyError> {
+  ) -> std::io::Result<Option<T>> {
     let path = self.key_file_path(key).with_extension("metadata.json");
     let bytes = self.env.read_file_bytes(&path)?;
     Ok(match bytes {
-      Some(bytes) => Some(serde_json::from_slice::<T>(&bytes)?),
+      Some(bytes) => {
+        Some(serde_json::from_slice::<T>(&bytes).map_err(|e| {
+          std::io::Error::new(ErrorKind::InvalidData, e.to_string())
+        })?)
+      }
       None => None,
     })
   }
@@ -78,7 +78,7 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
-  ) -> Result<HttpCacheItemKey<'a>, UrlToFilenameConversionError> {
+  ) -> std::io::Result<HttpCacheItemKey<'a>> {
     Ok(HttpCacheItemKey {
       #[cfg(debug_assertions)]
       is_local_key: false,
@@ -97,11 +97,11 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
   fn read_modified_time(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<SystemTime>, AnyError> {
+  ) -> std::io::Result<Option<SystemTime>> {
     #[cfg(debug_assertions)]
     debug_assert!(!key.is_local_key);
 
-    Ok(self.env.modified(self.key_file_path(key))?)
+    self.env.modified(self.key_file_path(key))
   }
 
   fn set(
@@ -109,7 +109,7 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
     url: &Url,
     headers: HeadersMap,
     content: &[u8],
-  ) -> Result<(), AnyError> {
+  ) -> std::io::Result<()> {
     let cache_filepath = self.get_cache_filepath(url)?;
     // Cache content
     self.env.atomic_write_file(&cache_filepath, content)?;
@@ -159,7 +159,7 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
   fn read_headers(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<HeadersMap>, AnyError> {
+  ) -> std::io::Result<Option<HeadersMap>> {
     // targeted deserialize
     #[derive(Deserialize)]
     struct SerializedHeaders {
@@ -178,7 +178,7 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
   fn read_download_time(
     &self,
     key: &HttpCacheItemKey,
-  ) -> Result<Option<SystemTime>, AnyError> {
+  ) -> std::io::Result<Option<SystemTime>> {
     // targeted deserialize
     #[derive(Deserialize)]
     struct SerializedTime {
@@ -199,9 +199,10 @@ fn write_metadata<Env: DenoCacheEnv>(
   env: &Env,
   path: &Path,
   meta_data: &SerializedCachedUrlMetadata,
-) -> Result<(), AnyError> {
+) -> std::io::Result<()> {
   let path = path.with_extension("metadata.json");
-  let json = serde_json::to_string_pretty(meta_data)?;
+  let json = serde_json::to_string_pretty(meta_data)
+    .map_err(|e| std::io::Error::new(ErrorKind::InvalidData, e.to_string()))?;
   env.atomic_write_file(&path, json.as_bytes())?;
   Ok(())
 }
