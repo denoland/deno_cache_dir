@@ -13,7 +13,6 @@ pub use cache::GlobalToLocalCopy;
 pub use cache::HttpCache;
 pub use cache::HttpCacheItemKey;
 pub use cache::SerializedCachedUrlMetadata;
-pub use cache::UrlToFilenameConversionError;
 pub use common::DenoCacheEnv;
 pub use global::GlobalHttpCache;
 pub use local::LocalHttpCache;
@@ -34,6 +33,7 @@ pub mod wasm {
 
   use crate::cache::GlobalToLocalCopy;
   use crate::common::HeadersMap;
+  use crate::CacheReadFileError;
   use crate::Checksum;
   use crate::DenoCacheEnv;
   use crate::HttpCache;
@@ -99,7 +99,7 @@ pub mod wasm {
   #[wasm_bindgen]
   pub fn url_to_filename(url: &str) -> Result<String, JsValue> {
     console_error_panic_hook::set_once();
-    let url = Url::parse(url).map_err(|e| as_js_error(e.into()))?;
+    let url = parse_url(url).map_err(as_js_error)?;
     crate::cache::url_to_filename(&url)
       .map(|s| s.to_string_lossy().to_string())
       .map_err(|e| as_js_error(e.into()))
@@ -201,8 +201,8 @@ pub mod wasm {
     fn inner<Cache: HttpCache>(
       cache: &Cache,
       url: &str,
-    ) -> anyhow::Result<Option<HeadersMap>> {
-      let url = Url::parse(url)?;
+    ) -> std::io::Result<Option<HeadersMap>> {
+      let url = parse_url(url)?;
       let key = cache.cache_item_key(&url)?;
       cache.read_headers(&key)
     }
@@ -226,16 +226,18 @@ pub mod wasm {
       url: &str,
       maybe_checksum: Option<Checksum>,
       allow_global_to_local: GlobalToLocalCopy,
-    ) -> anyhow::Result<Option<Vec<u8>>> {
-      let url = Url::parse(url)?;
+    ) -> std::io::Result<Option<Vec<u8>>> {
+      let url = parse_url(url)?;
       let key = cache.cache_item_key(&url)?;
-      match cache.read_file_bytes(
-        &key,
-        maybe_checksum,
-        allow_global_to_local,
-      )? {
-        Some(bytes) => Ok(Some(bytes)),
-        None => Ok(None),
+      match cache.read_file_bytes(&key, maybe_checksum, allow_global_to_local) {
+        Ok(Some(bytes)) => Ok(Some(bytes)),
+        Ok(None) => Ok(None),
+        Err(err) => match err {
+          CacheReadFileError::Io(err) => Err(err),
+          CacheReadFileError::ChecksumIntegrity(err) => {
+            Err(std::io::Error::new(ErrorKind::InvalidData, err.to_string()))
+          }
+        },
       }
     }
 
@@ -272,18 +274,24 @@ pub mod wasm {
       url: &str,
       headers: JsValue,
       content: &[u8],
-    ) -> anyhow::Result<()> {
-      let url = Url::parse(url)?;
+    ) -> std::io::Result<()> {
+      let url = parse_url(url)?;
       let headers: HashMap<String, String> =
-        serde_wasm_bindgen::from_value(headers)
-          .map_err(|err| anyhow::anyhow!("{}", err))?;
+        serde_wasm_bindgen::from_value(headers).map_err(|err| {
+          std::io::Error::new(ErrorKind::InvalidData, err.to_string())
+        })?;
       cache.set(&url, headers, content)
     }
 
     inner(cache, url, headers, content).map_err(as_js_error)
   }
 
-  fn as_js_error(e: anyhow::Error) -> JsValue {
+  fn parse_url(url: &str) -> std::io::Result<Url> {
+    Url::parse(url)
+      .map_err(|e| std::io::Error::new(ErrorKind::InvalidInput, e.to_string()))
+  }
+
+  fn as_js_error(e: std::io::Error) -> JsValue {
     JsValue::from(js_sys::Error::new(&e.to_string()))
   }
 
