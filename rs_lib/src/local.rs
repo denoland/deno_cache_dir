@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::ErrorKind;
@@ -9,7 +10,6 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use deno_media_type::MediaType;
-use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use url::Url;
@@ -616,7 +616,7 @@ impl<Env: DenoCacheEnv> LocalCacheManifest<Env> {
         != MediaType::from_specifier_and_headers(url, Some(headers))
     }
 
-    let mut headers_subset = IndexMap::new();
+    let mut headers_subset = BTreeMap::new();
 
     const HEADER_KEYS_TO_KEEP: [&str; 4] = [
       // keep alphabetical for cleanliness in the output
@@ -707,11 +707,10 @@ impl<Env: DenoCacheEnv> LocalCacheManifest<Env> {
 // This is in a separate module in order to enforce keeping
 // the internal implementation private.
 mod manifest {
-  use std::collections::HashMap;
+  use std::collections::BTreeMap;
   use std::path::Path;
   use std::path::PathBuf;
 
-  use indexmap::IndexMap;
   use serde::Deserialize;
   use serde::Serialize;
   use url::Url;
@@ -722,10 +721,10 @@ mod manifest {
   #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
   pub struct SerializedLocalCacheManifestDataModule {
     #[serde(
-      default = "IndexMap::new",
-      skip_serializing_if = "IndexMap::is_empty"
+      default = "BTreeMap::new",
+      skip_serializing_if = "BTreeMap::is_empty"
     )]
-    pub headers: IndexMap<String, String>,
+    pub headers: BTreeMap<String, String>,
   }
 
   impl SerializedLocalCacheManifestDataModule {
@@ -734,25 +733,26 @@ mod manifest {
     }
   }
 
+  // Using BTreeMap to make sure that the data is always sorted
   #[derive(Debug, Default, Clone, Serialize, Deserialize)]
   struct SerializedLocalCacheManifestData {
     #[serde(
-      default = "IndexMap::new",
-      skip_serializing_if = "IndexMap::is_empty"
+      default = "BTreeMap::new",
+      skip_serializing_if = "BTreeMap::is_empty"
     )]
-    pub folders: IndexMap<Url, String>,
+    pub folders: BTreeMap<Url, String>,
     #[serde(
-      default = "IndexMap::new",
-      skip_serializing_if = "IndexMap::is_empty"
+      default = "BTreeMap::new",
+      skip_serializing_if = "BTreeMap::is_empty"
     )]
-    pub modules: IndexMap<Url, SerializedLocalCacheManifestDataModule>,
+    pub modules: BTreeMap<Url, SerializedLocalCacheManifestDataModule>,
   }
 
   #[derive(Debug, Default, Clone)]
   pub(super) struct LocalCacheManifestData {
     serialized: SerializedLocalCacheManifestData,
     // reverse mapping used in the lsp
-    reverse_mapping: Option<HashMap<PathBuf, Url>>,
+    reverse_mapping: Option<BTreeMap<PathBuf, Url>>,
   }
 
   impl LocalCacheManifestData {
@@ -794,7 +794,7 @@ mod manifest {
               };
               (path, url.clone())
             }))
-            .collect::<HashMap<_, _>>(),
+            .collect::<BTreeMap<_, _>>(),
         )
       } else {
         None
