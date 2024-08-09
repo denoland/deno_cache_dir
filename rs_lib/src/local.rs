@@ -14,8 +14,10 @@ use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use url::Url;
 
+use crate::cache::CacheEntry;
 use crate::cache::CacheReadFileError;
 use crate::cache::GlobalToLocalCopy;
+use crate::SerializedCachedUrlMetadata;
 
 use super::common::base_url_to_filename_parts;
 use super::common::checksum;
@@ -154,22 +156,20 @@ impl<Env: DenoCacheEnv> HttpCache for LocalLspHttpCache<Env> {
     self.cache.set(url, headers, content)
   }
 
+  fn get(
+    &self,
+    key: &HttpCacheItemKey,
+    maybe_checksum: Option<Checksum>,
+    allow_global_to_local: GlobalToLocalCopy,
+  ) -> Result<Option<crate::cache::CacheEntry>, CacheReadFileError> {
+    self.cache.get(key, maybe_checksum, allow_global_to_local)
+  }
+
   fn read_modified_time(
     &self,
     key: &HttpCacheItemKey,
   ) -> std::io::Result<Option<SystemTime>> {
     self.cache.read_modified_time(key)
-  }
-
-  fn read_file_bytes(
-    &self,
-    key: &HttpCacheItemKey,
-    maybe_checksum: Option<Checksum>,
-    allow_global_to_local: GlobalToLocalCopy,
-  ) -> Result<Option<Vec<u8>>, CacheReadFileError> {
-    self
-      .cache
-      .read_file_bytes(key, maybe_checksum, allow_global_to_local)
   }
 
   fn read_headers(
@@ -311,22 +311,25 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
     Ok(())
   }
 
-  fn read_file_bytes(
+  fn get(
     &self,
     key: &HttpCacheItemKey,
     maybe_checksum: Option<Checksum>,
     allow_global_to_local: GlobalToLocalCopy,
-  ) -> Result<Option<Vec<u8>>, CacheReadFileError> {
+  ) -> Result<Option<CacheEntry>, CacheReadFileError> {
     #[cfg(debug_assertions)]
     debug_assert!(key.is_local_key);
 
+    // TODO(THIS PR): this seems slightly wrong because it shouldn't
+    // be copying the headers from the global cache unless GlobalToLocalCopy
+    // is allowed
     let maybe_headers = self.get_url_headers(key.url)?;
     match maybe_headers {
       Some(headers) => {
         let is_redirect = headers.contains_key("location");
-        if is_redirect {
+        let bytes = if is_redirect {
           // return back an empty file for redirect
-          Ok(Some(Vec::new()))
+          Vec::new()
         } else {
           // if it's not a redirect, then it should have a file path
           let local_file_path =
@@ -334,26 +337,37 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
               .as_path_from_root(&self.path);
           let maybe_file_bytes = self.fs().read_file_bytes(&local_file_path)?;
           match maybe_file_bytes {
-            Some(bytes) => Ok(Some(bytes)),
+            Some(bytes) => bytes,
             None => {
               if allow_global_to_local.is_true() {
                 // only check the checksum when copying from the global to the local cache
                 let global_key = self.global_cache.cache_item_key(key.url)?;
-                let maybe_file_bytes = self.global_cache.read_file_bytes(
+                let maybe_global_cache_file = self.global_cache.get(
                   &global_key,
                   maybe_checksum,
                   allow_global_to_local,
                 )?;
-                if let Some(bytes) = &maybe_file_bytes {
-                  self.fs().atomic_write_file(&local_file_path, bytes)?;
+                if let Some(file) = maybe_global_cache_file {
+                  self.fs().atomic_write_file(&local_file_path, &file.body)?;
+                  file.body
+                } else {
+                  return Ok(None);
                 }
-                Ok(maybe_file_bytes)
               } else {
-                Ok(None)
+                return Ok(None);
               }
             }
           }
-        }
+        };
+        Ok(Some(CacheEntry {
+          metadata: SerializedCachedUrlMetadata {
+            headers,
+            url: key.url.to_string(),
+            // not used for the local cache
+            time: None,
+          },
+          body: bytes,
+        }))
       }
       None => Ok(None),
     }

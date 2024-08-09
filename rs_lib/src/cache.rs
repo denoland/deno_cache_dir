@@ -108,6 +108,12 @@ pub struct SerializedCachedUrlMetadata {
   pub time: Option<SystemTime>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct CacheEntry {
+  pub metadata: SerializedCachedUrlMetadata,
+  pub body: Vec<u8>,
+}
+
 /// Computed cache key, which can help reduce the work of computing the cache key multiple times.
 pub struct HttpCacheItemKey<'a> {
   // The key is specific to the implementation of HttpCache,
@@ -137,16 +143,16 @@ pub trait HttpCache: Send + Sync + std::fmt::Debug {
     headers: HeadersMap,
     content: &[u8],
   ) -> std::io::Result<()>;
-  fn read_modified_time(
-    &self,
-    key: &HttpCacheItemKey,
-  ) -> std::io::Result<Option<SystemTime>>;
-  fn read_file_bytes(
+  fn get(
     &self,
     key: &HttpCacheItemKey,
     maybe_checksum: Option<Checksum>,
     allow_global_to_local: GlobalToLocalCopy,
-  ) -> Result<Option<Vec<u8>>, CacheReadFileError>;
+  ) -> Result<Option<CacheEntry>, CacheReadFileError>;
+  fn read_modified_time(
+    &self,
+    key: &HttpCacheItemKey,
+  ) -> std::io::Result<Option<SystemTime>>;
   /// Reads the headers for the cache item.
   fn read_headers(
     &self,
