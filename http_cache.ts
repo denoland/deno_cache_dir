@@ -51,7 +51,11 @@ export class HttpCache implements Disposable {
 
     let cache: LocalHttpCache | GlobalHttpCache;
     if (options.vendorRoot != null) {
-      cache = LocalHttpCache.new(options.vendorRoot, options.root, /* allow global to local copy */ !options.readOnly);
+      cache = LocalHttpCache.new(
+        options.vendorRoot,
+        options.root,
+        /* allow global to local copy */ !options.readOnly,
+      );
     } else {
       cache = GlobalHttpCache.new(options.root);
     }

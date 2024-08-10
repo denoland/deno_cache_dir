@@ -98,7 +98,7 @@ Deno.test({
     await withTempDir(async (tempDir) => {
       const denoDir = new DenoDir();
       const url = new URL("https://deno.land/std@0.140.0/path/mod.ts");
-      
+
       // disallow copy from global to local because readonly
       {
         using deps = await denoDir.createHttpCache({
