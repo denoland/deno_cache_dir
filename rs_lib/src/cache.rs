@@ -74,7 +74,7 @@ pub fn url_to_filename(url: &Url) -> std::io::Result<PathBuf> {
   // account when caching - it denotes parts of webpage, which
   // in case of static resources doesn't make much sense
   let hashed_filename = checksum(rest_str.as_bytes());
-  cache_filename.push(format!("{}.bin", hashed_filename));
+  cache_filename.push(hashed_filename);
   Ok(cache_filename)
 }
 

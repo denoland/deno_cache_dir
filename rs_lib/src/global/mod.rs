@@ -41,11 +41,11 @@ impl<Env: DenoCacheEnv> GlobalHttpCache<Env> {
     &self,
     url: &Url,
   ) -> std::io::Result<PathBuf> {
-    Ok(self.path.join(url_to_filename(url)?))
+    Ok(self.path.join(url_to_filename(url)?).with_extension("bin"))
   }
 
   fn get_cache_filepath(&self, url: &Url) -> std::io::Result<PathBuf> {
-    Ok(self.path.join(url_to_filename(url)?))
+    Ok(self.path.join(url_to_filename(url)?).with_extension("bin"))
   }
 
   #[inline]
@@ -213,7 +213,7 @@ mod test {
     for (url, expected) in test_cases.iter() {
       let u = Url::parse(url).unwrap();
       let p = url_to_filename(&u).unwrap();
-      assert_eq!(p, PathBuf::from(format!("{}.bin", expected)));
+      assert_eq!(p, PathBuf::from(expected));
     }
   }
 }
