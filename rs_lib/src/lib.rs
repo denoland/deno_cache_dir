@@ -274,15 +274,26 @@ pub mod wasm {
     inner(cache, url, maybe_checksum.map(Checksum::new))
       .map(|text| match text {
         Some(entry) => {
-          let body = {
-            let array = Uint8Array::new_with_length(entry.body.len() as u32);
-            array.copy_from(&entry.body);
+          let content = {
+            let array = Uint8Array::new_with_length(entry.content.len() as u32);
+            array.copy_from(&entry.content);
             JsValue::from(array)
           };
-          let headers: JsValue =
-            { serde_wasm_bindgen::to_value(&entry.metadata.headers).unwrap() };
+          let headers: JsValue = {
+            // make it an object instead of a Map
+            let headers_object = Object::new();
+            for (key, value) in &entry.metadata.headers {
+              Reflect::set(
+                &headers_object,
+                &JsValue::from_str(key),
+                &JsValue::from_str(value),
+              )
+              .unwrap();
+            }
+            JsValue::from(headers_object)
+          };
           let obj = Object::new();
-          Reflect::set(&obj, &JsValue::from_str("body"), &body).unwrap();
+          Reflect::set(&obj, &JsValue::from_str("content"), &content).unwrap();
           Reflect::set(&obj, &JsValue::from_str("headers"), &headers).unwrap();
           JsValue::from(obj)
         }

@@ -19,8 +19,11 @@ export interface HttpCacheGetOptions {
    * global cache (DENO_DIR) and not the local cache (vendor folder).
    */
   checksum?: string;
-  /** Allow copying from the global to the local cache (vendor folder). */
-  allowCopyGlobalToLocal?: boolean;
+}
+
+export interface HttpCacheEntry {
+  headers: Record<string, string>;
+  content: Uint8Array;
 }
 
 export class HttpCache implements Disposable {
@@ -48,7 +51,7 @@ export class HttpCache implements Disposable {
 
     let cache: LocalHttpCache | GlobalHttpCache;
     if (options.vendorRoot != null) {
-      cache = LocalHttpCache.new(options.vendorRoot, options.root);
+      cache = LocalHttpCache.new(options.vendorRoot, options.root, /* allow global to local copy */ !options.readOnly);
     } else {
       cache = GlobalHttpCache.new(options.root);
     }
@@ -73,11 +76,10 @@ export class HttpCache implements Disposable {
   get(
     url: URL,
     options?: HttpCacheGetOptions,
-  ): Uint8Array | undefined {
-    const data = this.#cache.getFileBytes(
+  ): HttpCacheEntry | undefined {
+    const data = this.#cache.get(
       url.toString(),
       options?.checksum,
-      options?.allowCopyGlobalToLocal ?? true,
     );
     return data == null ? undefined : data;
   }

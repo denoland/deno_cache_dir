@@ -13,25 +13,25 @@ const MAGIC_BYTES: &str = "d3n0l4nd";
 pub fn write(
   env: &impl DenoCacheEnv,
   path: &Path,
-  body: &[u8],
+  content: &[u8],
   metadata: &SerializedCachedUrlMetadata,
 ) -> std::io::Result<()> {
   let serialized_metadata = serde_json::to_vec(&metadata).unwrap();
   let serialized_metadata_size_bytes =
     (serialized_metadata.len() as u32).to_le_bytes();
-  let body_size_bytes = (body.len() as u32).to_le_bytes();
+  let content_size_bytes = (content.len() as u32).to_le_bytes();
   let capacity = MAGIC_BYTES.len() * 3
     + serialized_metadata_size_bytes.len()
-    + body_size_bytes.len()
+    + content_size_bytes.len()
     + serialized_metadata.len()
-    + body.len();
+    + content.len();
   let mut result = Vec::with_capacity(capacity);
   result.extend(MAGIC_BYTES.as_bytes());
   result.extend(serialized_metadata_size_bytes);
-  result.extend(body_size_bytes);
+  result.extend(content_size_bytes);
   result.extend(serialized_metadata);
   result.extend(MAGIC_BYTES.as_bytes());
-  result.extend(body);
+  result.extend(content);
   result.extend(MAGIC_BYTES.as_bytes());
   debug_assert_eq!(result.len(), capacity);
   env.atomic_write_file(path, &result)?;
@@ -48,12 +48,12 @@ pub fn read(
     return Ok(None);
   };
 
-  let Some(body) = read_exact_bytes_with_trailer(&mut *file, prelude.body_len)?
+  let Some(content) = read_exact_bytes_with_trailer(&mut *file, prelude.content_len)?
   else {
     return Ok(None);
   };
 
-  Ok(Some(CacheEntry { metadata, body }))
+  Ok(Some(CacheEntry { metadata, content }))
 }
 
 pub fn read_metadata<TMetadata: DeserializeOwned>(
@@ -66,9 +66,9 @@ pub fn read_metadata<TMetadata: DeserializeOwned>(
     return Ok(None);
   };
 
-  // skip over the body and just ensure the file isn't corrupted and
+  // skip over the content and just ensure the file isn't corrupted and
   // has the trailer in the correct position
-  file.seek_relative(prelude.body_len as i64)?;
+  file.seek_relative(prelude.content_len as i64)?;
   let Some(read_magic_bytes) = read_exact_bytes(&mut *file, MAGIC_BYTES.len())?
   else {
     return Ok(None);
@@ -115,7 +115,7 @@ fn open_read_prelude_and_metadata<TMetadata: DeserializeOwned>(
 
 struct Prelude {
   metadata_len: usize,
-  body_len: usize,
+  content_len: usize,
 }
 
 fn read_prelude(
@@ -134,11 +134,11 @@ fn read_prelude(
   let metadata_len = u32::from_le_bytes(u32_buf) as usize;
   pos += 4;
   u32_buf.copy_from_slice(&prelude[pos..pos + 4]);
-  let body_len = u32::from_le_bytes(u32_buf) as usize;
+  let content_len = u32::from_le_bytes(u32_buf) as usize;
 
   Ok(Some(Prelude {
     metadata_len,
-    body_len,
+    content_len,
   }))
 }
 

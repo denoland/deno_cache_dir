@@ -110,7 +110,7 @@ pub struct SerializedCachedUrlMetadata {
 #[derive(Debug, PartialEq, Eq)]
 pub struct CacheEntry {
   pub metadata: SerializedCachedUrlMetadata,
-  pub body: Vec<u8>,
+  pub content: Vec<u8>,
 }
 
 /// Computed cache key, which can help reduce the work of computing the cache key multiple times.

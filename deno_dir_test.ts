@@ -57,7 +57,9 @@ export * from "./glob.ts";
     deps.set(url, expectedHeaders, new TextEncoder().encode(expectedText));
     const headers = deps.getHeaders(url)!;
     assertEquals(headers, expectedHeaders);
-    const text = new TextDecoder().decode(deps.get(url, undefined));
+    const cacheEntry = deps.get(url)!;
+    assertEquals(cacheEntry.headers, expectedHeaders);
+    const text = new TextDecoder().decode(cacheEntry.content);
     assertEquals(text, expectedText);
 
     // ok
@@ -78,17 +80,15 @@ export * from "./glob.ts";
 });
 
 Deno.test({
-  name: "HttpCache - global cache - allowCopyGlobalToLocal",
+  name: "HttpCache - global cache - get",
   async fn() {
     const denoDir = new DenoDir();
     const url = new URL("https://deno.land/std@0.140.0/path/mod.ts");
     const deps = await denoDir.createHttpCache();
     // disallow will still work because we're using a global cache
     // which is not affected by this option
-    const text = await deps.get(url, {
-      allowCopyGlobalToLocal: false,
-    });
-    assertEquals(text!.length, 820);
+    const entry = await deps.get(url);
+    assertEquals(entry!.content.length, 820);
   },
 });
 
@@ -98,22 +98,23 @@ Deno.test({
     await withTempDir(async (tempDir) => {
       const denoDir = new DenoDir();
       const url = new URL("https://deno.land/std@0.140.0/path/mod.ts");
-      const deps = await denoDir.createHttpCache({
-        vendorRoot: tempDir,
-      });
-      // disallow
+      
+      // disallow copy from global to local because readonly
       {
-        const text = deps.get(url, {
-          allowCopyGlobalToLocal: false,
+        using deps = await denoDir.createHttpCache({
+          vendorRoot: tempDir,
+          readOnly: true,
         });
+        const text = deps.get(url);
         assertEquals(text, undefined);
       }
-      // allow
+      // this should be fine though
       {
-        const text = deps.get(url, {
-          allowCopyGlobalToLocal: true,
+        using deps = await denoDir.createHttpCache({
+          vendorRoot: tempDir,
         });
-        assertEquals(text!.length, 820);
+        const entry = deps.get(url);
+        assertEquals(entry!.content.length, 820);
       }
     });
   },

@@ -168,11 +168,11 @@ export class FileFetcher {
     options: ResolvedFetchOptions,
     httpCache: HttpCache,
   ): LoadResponse | undefined {
-    const headers = httpCache.getHeaders(specifier);
-    if (!headers) {
+    const cacheEntry = httpCache.get(specifier, options);
+    if (!cacheEntry) {
       return undefined;
     }
-    const location = headers["location"];
+    const location = cacheEntry.headers["location"];
     if (location != null && location.length > 0) {
       const redirect = new URL(location, specifier);
       return {
@@ -180,15 +180,11 @@ export class FileFetcher {
         specifier: redirect.toString(),
       };
     }
-    const content = httpCache.get(specifier, options);
-    if (content == null) {
-      return undefined;
-    }
     return {
       kind: "module",
       specifier: specifier.toString(),
-      headers,
-      content,
+      headers: cacheEntry.headers,
+      content: cacheEntry.content,
     };
   }
 
