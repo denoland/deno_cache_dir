@@ -314,8 +314,10 @@ fn test_local_global_cache() {
     let check_output = |local_cache: &LocalHttpCache<_>| {
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
-        String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().content)
-          .unwrap(),
+        String::from_utf8(
+          local_cache.get(&key, None).unwrap().unwrap().content
+        )
+        .unwrap(),
         content
       );
       let headers = local_cache.read_headers(&key).unwrap().unwrap();
@@ -367,8 +369,10 @@ fn test_local_global_cache() {
         .unwrap();
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
-        String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().content)
-          .unwrap(),
+        String::from_utf8(
+          local_cache.get(&key, None).unwrap().unwrap().content
+        )
+        .unwrap(),
         content
       );
       let headers = local_cache.read_headers(&key).unwrap().unwrap();
@@ -385,8 +389,10 @@ fn test_local_global_cache() {
         .unwrap();
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
-        String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().content)
-          .unwrap(),
+        String::from_utf8(
+          local_cache.get(&key, None).unwrap().unwrap().content
+        )
+        .unwrap(),
         content
       );
       assert!(local_cache_path
@@ -400,8 +406,10 @@ fn test_local_global_cache() {
         GlobalToLocalCopy::Allow,
       );
       assert_eq!(
-        String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().content)
-          .unwrap(),
+        String::from_utf8(
+          local_cache.get(&key, None).unwrap().unwrap().content
+        )
+        .unwrap(),
         content
       );
     }
@@ -562,8 +570,10 @@ fn test_lsp_local_cache() {
     {
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
-        String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().content)
-          .unwrap(),
+        String::from_utf8(
+          local_cache.get(&key, None).unwrap().unwrap().content
+        )
+        .unwrap(),
         content
       );
     }
@@ -573,7 +583,11 @@ fn test_lsp_local_cache() {
       let key = readonly_local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
         String::from_utf8(
-          readonly_local_cache.get(&key, None).unwrap().unwrap().content
+          readonly_local_cache
+            .get(&key, None)
+            .unwrap()
+            .unwrap()
+            .content
         )
         .unwrap(),
         content
@@ -621,8 +635,10 @@ fn test_lsp_local_cache() {
     {
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
-        String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().content)
-          .unwrap(),
+        String::from_utf8(
+          local_cache.get(&key, None).unwrap().unwrap().content
+        )
+        .unwrap(),
         content
       );
     }
@@ -631,7 +647,11 @@ fn test_lsp_local_cache() {
       let key = readonly_local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
         String::from_utf8(
-          readonly_local_cache.get(&key, None).unwrap().unwrap().content
+          readonly_local_cache
+            .get(&key, None)
+            .unwrap()
+            .unwrap()
+            .content
         )
         .unwrap(),
         content
@@ -661,8 +681,10 @@ fn test_lsp_local_cache() {
       {
         let key = local_cache.cache_item_key(&url).unwrap();
         assert_eq!(
-          String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().content)
-            .unwrap(),
+          String::from_utf8(
+            local_cache.get(&key, None).unwrap().unwrap().content
+          )
+          .unwrap(),
           content
         );
       }
@@ -671,7 +693,11 @@ fn test_lsp_local_cache() {
         let key = readonly_local_cache.cache_item_key(&url).unwrap();
         assert_eq!(
           String::from_utf8(
-            readonly_local_cache.get(&key, None).unwrap().unwrap().content
+            readonly_local_cache
+              .get(&key, None)
+              .unwrap()
+              .unwrap()
+              .content
           )
           .unwrap(),
           content
@@ -701,8 +727,10 @@ fn test_lsp_local_cache() {
       {
         let key = local_cache.cache_item_key(&url).unwrap();
         assert_eq!(
-          String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().content)
-            .unwrap(),
+          String::from_utf8(
+            local_cache.get(&key, None).unwrap().unwrap().content
+          )
+          .unwrap(),
           content
         );
       }
@@ -711,7 +739,11 @@ fn test_lsp_local_cache() {
         let key = readonly_local_cache.cache_item_key(&url).unwrap();
         assert_eq!(
           String::from_utf8(
-            readonly_local_cache.get(&key, None).unwrap().unwrap().content
+            readonly_local_cache
+              .get(&key, None)
+              .unwrap()
+              .unwrap()
+              .content
           )
           .unwrap(),
           content

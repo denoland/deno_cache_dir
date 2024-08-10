@@ -358,7 +358,9 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
                 let maybe_global_cache_file =
                   self.global_cache.get(&global_key, maybe_checksum)?;
                 if let Some(file) = maybe_global_cache_file {
-                  self.fs().atomic_write_file(&local_file_path, &file.content)?;
+                  self
+                    .fs()
+                    .atomic_write_file(&local_file_path, &file.content)?;
                   file.content
                 } else {
                   return Ok(None);

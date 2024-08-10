@@ -48,7 +48,8 @@ pub fn read(
     return Ok(None);
   };
 
-  let Some(content) = read_exact_bytes_with_trailer(&mut *file, prelude.content_len)?
+  let Some(content) =
+    read_exact_bytes_with_trailer(&mut *file, prelude.content_len)?
   else {
     return Ok(None);
   };
