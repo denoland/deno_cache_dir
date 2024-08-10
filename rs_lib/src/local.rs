@@ -48,6 +48,13 @@ impl<Env: DenoCacheEnv> LocalLspHttpCache<Env> {
         path,
         manifest,
         global_cache,
+        // In the LSP, we disallow the cache from automatically copying from
+        // the global cache to the local cache for technical reasons.
+        //
+        // 1. We need to verify the checksums from the lockfile are correct when
+        //    moving from the global to the local cache.
+        // 2. We need to verify the checksums for JSR https specifiers match what
+        //    is found in the package's manifest.
         allow_global_to_local: GlobalToLocalCopy::Disallow,
       },
     }
@@ -341,17 +348,15 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
           let local_file_path =
             url_to_local_sub_path(key.url, headers_content_type(&headers))?
               .as_path_from_root(&self.path);
-          let maybe_file_bytes = self.fs().read_file_bytes(&local_file_path)?;
-          match maybe_file_bytes {
-            Some(bytes) => bytes,
-            None => {
+          let file_bytes_result = self.fs().read_file_bytes(&local_file_path);
+          match file_bytes_result {
+            Ok(bytes) => bytes,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
               if self.allow_global_to_local.is_true() {
                 // only check the checksum when copying from the global to the local cache
                 let global_key = self.global_cache.cache_item_key(key.url)?;
-                let maybe_global_cache_file = self.global_cache.get(
-                  &global_key,
-                  maybe_checksum,
-                )?;
+                let maybe_global_cache_file =
+                  self.global_cache.get(&global_key, maybe_checksum)?;
                 if let Some(file) = maybe_global_cache_file {
                   self.fs().atomic_write_file(&local_file_path, &file.body)?;
                   file.body
@@ -362,6 +367,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
                 return Ok(None);
               }
             }
+            Err(err) => return Err(CacheReadFileError::Io(err)),
           }
         };
         Ok(Some(CacheEntry {
@@ -608,7 +614,6 @@ impl<Env: DenoCacheEnv> LocalCacheManifest<Env> {
     let text = env
       .read_file_bytes(&file_path)
       .ok()
-      .flatten()
       .and_then(|bytes| String::from_utf8(bytes).ok());
     Self {
       env,

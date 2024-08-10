@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::io::Read;
+use std::io::Seek;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -6,6 +8,7 @@ use std::time::SystemTime;
 use deno_cache_dir::CacheReadFileError;
 use deno_cache_dir::Checksum;
 use deno_cache_dir::DenoCacheEnv;
+use deno_cache_dir::DenoCacheEnvFsFile;
 use deno_cache_dir::GlobalHttpCache;
 use deno_cache_dir::GlobalToLocalCopy;
 use deno_cache_dir::HttpCache;
@@ -15,16 +18,32 @@ use serde_json::json;
 use tempfile::TempDir;
 use url::Url;
 
+pub struct TestRealFsFile(std::fs::File);
+
+impl DenoCacheEnvFsFile for TestRealFsFile {
+  fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
+    self.0.read(bytes)
+  }
+
+  fn seek_relative(&mut self, amount: i64) -> std::io::Result<()> {
+    self.0.seek_relative(amount)
+  }
+}
+
 #[derive(Debug, Clone)]
 struct TestRealEnv;
 
 impl DenoCacheEnv for TestRealEnv {
-  fn read_file_bytes(&self, path: &Path) -> std::io::Result<Option<Vec<u8>>> {
-    match std::fs::read(path) {
-      Ok(s) => Ok(Some(s)),
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
-      Err(err) => Err(err),
-    }
+  fn open_read(
+    &self,
+    path: &Path,
+  ) -> std::io::Result<Box<dyn DenoCacheEnvFsFile>> {
+    let fs_file = std::fs::File::open(path)?;
+    Ok(Box::new(TestRealFsFile(fs_file)))
+  }
+
+  fn read_file_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+    std::fs::read(path)
   }
 
   fn atomic_write_file(
@@ -98,13 +117,8 @@ fn test_global_get_set() {
   let content = b"Hello world";
   cache.set(&url, headers, content).unwrap();
   let key = cache.cache_item_key(&url).unwrap();
-  let content = String::from_utf8(
-    cache
-      .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
-      .unwrap()
-      .unwrap(),
-  )
-  .unwrap();
+  let content =
+    String::from_utf8(cache.get(&key, None).unwrap().unwrap().body).unwrap();
   let headers = cache.read_headers(&key).unwrap().unwrap();
   assert_eq!(content, "Hello world");
   assert_eq!(
@@ -120,24 +134,17 @@ fn test_global_get_set() {
   // reading with checksum that matches
   {
     let found_content = cache
-      .read_file_bytes(
-        &key,
-        Some(Checksum::new(matching_checksum)),
-        GlobalToLocalCopy::Allow,
-      )
+      .get(&key, Some(Checksum::new(matching_checksum)))
       .unwrap()
-      .unwrap();
+      .unwrap()
+      .body;
     assert_eq!(found_content, content.as_bytes());
   }
   // reading with a checksum that doesn't match
   {
     let not_matching_checksum = "1234";
     let err = cache
-      .read_file_bytes(
-        &key,
-        Some(Checksum::new(not_matching_checksum)),
-        GlobalToLocalCopy::Allow,
-      )
+      .get(&key, Some(Checksum::new(not_matching_checksum)))
       .err()
       .unwrap();
     let err = match err {
@@ -158,8 +165,11 @@ fn test_local_global_cache() {
   let fs = TestRealEnv;
   let global_cache =
     Arc::new(GlobalHttpCache::new(global_cache_path.clone(), fs));
-  let local_cache =
-    LocalHttpCache::new(local_cache_path.clone(), global_cache.clone());
+  let local_cache = LocalHttpCache::new(
+    local_cache_path.clone(),
+    global_cache.clone(),
+    GlobalToLocalCopy::Allow,
+  );
 
   let manifest_file_path = local_cache_path.join("manifest.json");
   // mapped url
@@ -178,13 +188,8 @@ fn test_local_global_cache() {
       .unwrap();
     let key = local_cache.cache_item_key(&url).unwrap();
     assert_eq!(
-      String::from_utf8(
-        local_cache
-          .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
-          .unwrap()
-          .unwrap()
-      )
-      .unwrap(),
+      String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().body)
+        .unwrap(),
       content
     );
     let headers = local_cache.read_headers(&key).unwrap().unwrap();
@@ -196,13 +201,8 @@ fn test_local_global_cache() {
     // now try deleting the global cache and we should still be able to load it
     std::fs::remove_dir_all(&global_cache_path).unwrap();
     assert_eq!(
-      String::from_utf8(
-        local_cache
-          .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
-          .unwrap()
-          .unwrap()
-      )
-      .unwrap(),
+      String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().body)
+        .unwrap(),
       content
     );
   }
@@ -217,13 +217,8 @@ fn test_local_global_cache() {
     let url = Url::parse("https://deno.land/main.js").unwrap();
     let key = local_cache.cache_item_key(&url).unwrap();
     assert_eq!(
-      String::from_utf8(
-        local_cache
-          .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
-          .unwrap()
-          .unwrap()
-      )
-      .unwrap(),
+      String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().body)
+        .unwrap(),
       content
     );
     let headers = local_cache.read_headers(&key).unwrap().unwrap();
@@ -247,13 +242,8 @@ fn test_local_global_cache() {
       .unwrap();
     let key = local_cache.cache_item_key(&url).unwrap();
     assert_eq!(
-      String::from_utf8(
-        local_cache
-          .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
-          .unwrap()
-          .unwrap()
-      )
-      .unwrap(),
+      String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().body)
+        .unwrap(),
       content
     );
     let headers = local_cache.read_headers(&key).unwrap().unwrap();
@@ -293,8 +283,11 @@ fn test_local_global_cache() {
 
   // reset the local cache
   std::fs::remove_dir_all(&local_cache_path).unwrap();
-  let local_cache =
-    LocalHttpCache::new(local_cache_path.clone(), global_cache.clone());
+  let local_cache = LocalHttpCache::new(
+    local_cache_path.clone(),
+    global_cache.clone(),
+    GlobalToLocalCopy::Allow,
+  );
 
   // now try caching a file with many headers
   {
@@ -321,13 +314,8 @@ fn test_local_global_cache() {
     let check_output = |local_cache: &LocalHttpCache<_>| {
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
-        String::from_utf8(
-          local_cache
-            .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
-            .unwrap()
-            .unwrap()
-        )
-        .unwrap(),
+        String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().body)
+          .unwrap(),
         content
       );
       let headers = local_cache.read_headers(&key).unwrap().unwrap();
@@ -357,13 +345,17 @@ fn test_local_global_cache() {
     check_output(&LocalHttpCache::new(
       local_cache_path.to_path_buf(),
       global_cache.clone(),
+      GlobalToLocalCopy::Allow,
     ));
   }
 
   // reset the local cache
   std::fs::remove_dir_all(&local_cache_path).unwrap();
-  let local_cache =
-    LocalHttpCache::new(local_cache_path.clone(), global_cache.clone());
+  let local_cache = LocalHttpCache::new(
+    local_cache_path.clone(),
+    global_cache.clone(),
+    GlobalToLocalCopy::Allow,
+  );
 
   // try a file that can't be mapped to the file system
   {
@@ -375,13 +367,8 @@ fn test_local_global_cache() {
         .unwrap();
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
-        String::from_utf8(
-          local_cache
-            .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
-            .unwrap()
-            .unwrap()
-        )
-        .unwrap(),
+        String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().body)
+          .unwrap(),
         content
       );
       let headers = local_cache.read_headers(&key).unwrap().unwrap();
@@ -398,13 +385,8 @@ fn test_local_global_cache() {
         .unwrap();
       let key = local_cache.cache_item_key(&url).unwrap();
       assert_eq!(
-        String::from_utf8(
-          local_cache
-            .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
-            .unwrap()
-            .unwrap()
-        )
-        .unwrap(),
+        String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().body)
+          .unwrap(),
         content
       );
       assert!(local_cache_path
@@ -415,15 +397,11 @@ fn test_local_global_cache() {
       let local_cache = LocalHttpCache::new(
         local_cache_path.to_path_buf(),
         global_cache.clone(),
+        GlobalToLocalCopy::Allow,
       );
       assert_eq!(
-        String::from_utf8(
-          local_cache
-            .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
-            .unwrap()
-            .unwrap()
-        )
-        .unwrap(),
+        String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().body)
+          .unwrap(),
         content
       );
     }
@@ -444,8 +422,11 @@ fn test_local_global_cache() {
 
   // reset the local cache
   std::fs::remove_dir_all(&local_cache_path).unwrap();
-  let local_cache =
-    LocalHttpCache::new(local_cache_path.clone(), global_cache.clone());
+  let local_cache = LocalHttpCache::new(
+    local_cache_path.clone(),
+    global_cache.clone(),
+    GlobalToLocalCopy::Allow,
+  );
 
   // now try a redirect
   {
@@ -479,8 +460,11 @@ fn test_local_global_cache() {
 
   // reset the local cache
   std::fs::remove_dir_all(&local_cache_path).unwrap();
-  let local_cache =
-    LocalHttpCache::new(local_cache_path.clone(), global_cache.clone());
+  let local_cache = LocalHttpCache::new(
+    local_cache_path.clone(),
+    global_cache.clone(),
+    GlobalToLocalCopy::Allow,
+  );
   let url = Url::parse("https://deno.land/x/mod.ts").unwrap();
   let matching_checksum =
     "5eadcbe625a8489347fc3b229ab66bdbcbdfecedf229dfe5d0a8a399dae6c005";
@@ -501,11 +485,7 @@ fn test_local_global_cache() {
   for _ in 0..2 {
     let not_matching_checksum = "1234";
     let err = local_cache
-      .read_file_bytes(
-        &key,
-        Some(Checksum::new(not_matching_checksum)),
-        GlobalToLocalCopy::Allow,
-      )
+      .get(&key, Some(Checksum::new(not_matching_checksum)))
       .err()
       .unwrap();
     let err = match err {
@@ -519,25 +499,19 @@ fn test_local_global_cache() {
   // reading with checksum that matches
   {
     let found_content = local_cache
-      .read_file_bytes(
-        &key,
-        Some(Checksum::new(matching_checksum)),
-        GlobalToLocalCopy::Allow,
-      )
+      .get(&key, Some(Checksum::new(matching_checksum)))
       .unwrap()
-      .unwrap();
+      .unwrap()
+      .body;
     assert_eq!(found_content, content.as_bytes());
   }
   // at this point the file should exist in the local cache and so the checksum will be ignored
   {
     let found_content = local_cache
-      .read_file_bytes(
-        &key,
-        Some(Checksum::new("not matching")),
-        GlobalToLocalCopy::Allow,
-      )
+      .get(&key, Some(Checksum::new("not matching")))
       .unwrap()
-      .unwrap();
+      .unwrap()
+      .body;
     assert_eq!(found_content, content.as_bytes());
   }
 }
@@ -555,10 +529,14 @@ fn test_lsp_local_cache() {
   let fs = TestRealEnv;
   let global_cache =
     Arc::new(GlobalHttpCache::new(global_cache_path.to_path_buf(), fs));
-  let local_cache = LocalLspHttpCache::new(
+  let local_cache = LocalHttpCache::new(
     local_cache_path.to_path_buf(),
     global_cache.clone(),
+    GlobalToLocalCopy::Allow,
   );
+  let create_readonly_cache = || {
+    LocalLspHttpCache::new(local_cache_path.to_path_buf(), global_cache.clone())
+  };
 
   // mapped url
   {
@@ -574,35 +552,54 @@ fn test_lsp_local_cache() {
         content.as_bytes(),
       )
       .unwrap();
-    let key = local_cache.cache_item_key(&url).unwrap();
-    assert_eq!(
-      String::from_utf8(
-        local_cache
-          .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
-          .unwrap()
-          .unwrap()
-      )
-      .unwrap(),
-      content
-    );
+    // will be None because it's readonly
+    {
+      let readonly_local_cache = create_readonly_cache();
+      let key = readonly_local_cache.cache_item_key(&url).unwrap();
+      assert_eq!(readonly_local_cache.get(&key, None).unwrap(), None);
+    }
+    // populate it with the non-readonly local cache
+    {
+      let key = local_cache.cache_item_key(&url).unwrap();
+      assert_eq!(
+        String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().body)
+          .unwrap(),
+        content
+      );
+    }
+    // now the readonly cache will have it
+    {
+      let readonly_local_cache = create_readonly_cache();
+      let key = readonly_local_cache.cache_item_key(&url).unwrap();
+      assert_eq!(
+        String::from_utf8(
+          readonly_local_cache.get(&key, None).unwrap().unwrap().body
+        )
+        .unwrap(),
+        content
+      );
+    }
 
-    // check getting the file url works
-    let file_url = local_cache.get_file_url(&url);
-    let expected = Url::from_directory_path(&local_cache_path)
-      .unwrap()
-      .join("deno.land/x/mod.ts")
-      .unwrap();
-    assert_eq!(file_url, Some(expected));
+    {
+      // check getting the file url works
+      let readonly_local_cache = create_readonly_cache();
+      let file_url = readonly_local_cache.get_file_url(&url);
+      let expected = Url::from_directory_path(&local_cache_path)
+        .unwrap()
+        .join("deno.land/x/mod.ts")
+        .unwrap();
+      assert_eq!(file_url, Some(expected));
 
-    // get the reverse mapping
-    let mapping = local_cache.get_remote_url(
-      local_cache_path
-        .join("deno.land")
-        .join("x")
-        .join("mod.ts")
-        .as_path(),
-    );
-    assert_eq!(mapping.as_ref(), Some(&url));
+      // get the reverse mapping
+      let mapping = readonly_local_cache.get_remote_url(
+        local_cache_path
+          .join("deno.land")
+          .join("x")
+          .join("mod.ts")
+          .as_path(),
+      );
+      assert_eq!(mapping.as_ref(), Some(&url));
+    }
   }
 
   // now try a file with a different content-type header
@@ -620,23 +617,32 @@ fn test_lsp_local_cache() {
         content.as_bytes(),
       )
       .unwrap();
-    let key = local_cache.cache_item_key(&url).unwrap();
-    assert_eq!(
-      String::from_utf8(
-        local_cache
-          .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
-          .unwrap()
-          .unwrap()
-      )
-      .unwrap(),
-      content
-    );
+    // populate it with the non-readonly local cache
+    {
+      let key = local_cache.cache_item_key(&url).unwrap();
+      assert_eq!(
+        String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().body)
+          .unwrap(),
+        content
+      );
+    }
+    {
+      let readonly_local_cache = create_readonly_cache();
+      let key = readonly_local_cache.cache_item_key(&url).unwrap();
+      assert_eq!(
+        String::from_utf8(
+          readonly_local_cache.get(&key, None).unwrap().unwrap().body
+        )
+        .unwrap(),
+        content
+      );
 
-    let file_url = local_cache.get_file_url(&url).unwrap();
-    let path = file_url.to_file_path().unwrap();
-    assert!(path.exists());
-    let mapping = local_cache.get_remote_url(&path);
-    assert_eq!(mapping.as_ref(), Some(&url));
+      let file_url = readonly_local_cache.get_file_url(&url).unwrap();
+      let path = file_url.to_file_path().unwrap();
+      assert!(path.exists());
+      let mapping = readonly_local_cache.get_remote_url(&path);
+      assert_eq!(mapping.as_ref(), Some(&url));
+    }
   }
 
   // try http specifiers that can't be mapped to the file system
@@ -651,23 +657,32 @@ fn test_lsp_local_cache() {
       global_cache
         .set(&url, HashMap::new(), content.as_bytes())
         .unwrap();
-      let key = local_cache.cache_item_key(&url).unwrap();
-      assert_eq!(
-        String::from_utf8(
-          local_cache
-            .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
-            .unwrap()
-            .unwrap()
-        )
-        .unwrap(),
-        content
-      );
+      // populate it with the non-readonly local cache
+      {
+        let key = local_cache.cache_item_key(&url).unwrap();
+        assert_eq!(
+          String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().body)
+            .unwrap(),
+          content
+        );
+      }
+      {
+        let readonly_local_cache = create_readonly_cache();
+        let key = readonly_local_cache.cache_item_key(&url).unwrap();
+        assert_eq!(
+          String::from_utf8(
+            readonly_local_cache.get(&key, None).unwrap().unwrap().body
+          )
+          .unwrap(),
+          content
+        );
 
-      let file_url = local_cache.get_file_url(&url).unwrap();
-      let path = file_url.to_file_path().unwrap();
-      assert!(path.exists());
-      let mapping = local_cache.get_remote_url(&path);
-      assert_eq!(mapping.as_ref(), Some(&url));
+        let file_url = readonly_local_cache.get_file_url(&url).unwrap();
+        let path = file_url.to_file_path().unwrap();
+        assert!(path.exists());
+        let mapping = readonly_local_cache.get_remote_url(&path);
+        assert_eq!(mapping.as_ref(), Some(&url));
+      }
     }
 
     // now try a files in the same and sub directories, that maps to the local filesystem
@@ -682,28 +697,34 @@ fn test_lsp_local_cache() {
       global_cache
         .set(&url, HashMap::new(), content.as_bytes())
         .unwrap();
-      let key = local_cache.cache_item_key(&url).unwrap();
-      assert_eq!(
-        String::from_utf8(
-          local_cache
-            .read_file_bytes(&key, None, GlobalToLocalCopy::Allow)
-            .unwrap()
-            .unwrap()
-        )
-        .unwrap(),
-        content
-      );
-      let file_url = local_cache.get_file_url(&url).unwrap();
-      let path = file_url.to_file_path().unwrap();
-      assert!(path.exists());
-      let mapping = local_cache.get_remote_url(&path);
-      assert_eq!(mapping.as_ref(), Some(&url));
+      // populate it with the non-readonly local cache
+      {
+        let key = local_cache.cache_item_key(&url).unwrap();
+        assert_eq!(
+          String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().body)
+            .unwrap(),
+          content
+        );
+      }
+      {
+        let readonly_local_cache = create_readonly_cache();
+        let key = readonly_local_cache.cache_item_key(&url).unwrap();
+        assert_eq!(
+          String::from_utf8(
+            readonly_local_cache.get(&key, None).unwrap().unwrap().body
+          )
+          .unwrap(),
+          content
+        );
+        let file_url = readonly_local_cache.get_file_url(&url).unwrap();
+        let path = file_url.to_file_path().unwrap();
+        assert!(path.exists());
+        let mapping = readonly_local_cache.get_remote_url(&path);
+        assert_eq!(mapping.as_ref(), Some(&url));
+      }
 
       // ensure we can still get this file with a new local cache
-      let local_cache = LocalLspHttpCache::new(
-        local_cache_path.to_path_buf(),
-        global_cache.clone(),
-      );
+      let local_cache = create_readonly_cache();
       let file_url = local_cache.get_file_url(&url).unwrap();
       let path = file_url.to_file_path().unwrap();
       assert!(path.exists());

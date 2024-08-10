@@ -13,7 +13,6 @@ use crate::cache::url_to_filename;
 use crate::cache::CacheEntry;
 use crate::cache::CacheReadFileError;
 use crate::cache::Checksum;
-use crate::cache::GlobalToLocalCopy;
 use crate::cache::SerializedCachedUrlMetadata;
 use crate::common::checksum;
 use crate::common::HeadersMap;
@@ -142,7 +141,7 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
     &self,
     key: &HttpCacheItemKey,
   ) -> std::io::Result<Option<HeadersMap>> {
-    // todo(THIS PR): targeted deserialize
+    // targeted deserialize
     #[derive(Deserialize)]
     struct SerializedHeaders {
       pub headers: HeadersMap,
@@ -151,26 +150,30 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
     #[cfg(debug_assertions)]
     debug_assert!(!key.is_local_key);
 
-    // todo(THIS PR): optimized read from the file (only the headers area)
-    let maybe_file = cache_file::read(&self.env, self.key_file_path(key))?;
-    Ok(maybe_file.map(|f| f.metadata.headers))
+    let maybe_metadata = cache_file::read_metadata::<SerializedHeaders>(
+      &self.env,
+      self.key_file_path(key),
+    )?;
+    Ok(maybe_metadata.map(|m| m.headers))
   }
 
   fn read_download_time(
     &self,
     key: &HttpCacheItemKey,
   ) -> std::io::Result<Option<SystemTime>> {
-    // todo(THIS PR): targeted deserialize
+    // targeted deserialize
     #[derive(Deserialize)]
     struct SerializedTime {
-      pub now: Option<SystemTime>,
+      pub time: Option<SystemTime>,
     }
 
     #[cfg(debug_assertions)]
     debug_assert!(!key.is_local_key);
-    // todo(THIS PR): optimized read from the file (only the headers area)
-    let maybe_file = cache_file::read(&self.env, self.key_file_path(key))?;
-    Ok(maybe_file.and_then(|f| f.metadata.time))
+    let maybe_metadata = cache_file::read_metadata::<SerializedTime>(
+      &self.env,
+      self.key_file_path(key),
+    )?;
+    Ok(maybe_metadata.and_then(|m| m.time))
   }
 }
 
@@ -210,7 +213,7 @@ mod test {
     for (url, expected) in test_cases.iter() {
       let u = Url::parse(url).unwrap();
       let p = url_to_filename(&u).unwrap();
-      assert_eq!(p, PathBuf::from(expected));
+      assert_eq!(p, PathBuf::from(format!("{}.bin", expected)));
     }
   }
 }

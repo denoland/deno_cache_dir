@@ -28,10 +28,13 @@ pub mod wasm {
   use std::sync::Arc;
   use std::time::SystemTime;
 
+  use js_sys::Object;
+  use js_sys::Reflect;
   use js_sys::Uint8Array;
   use url::Url;
   use wasm_bindgen::prelude::*;
 
+  use crate::cache::CacheEntry;
   use crate::cache::GlobalToLocalCopy;
   use crate::common::HeadersMap;
   use crate::CacheReadFileError;
@@ -51,17 +54,48 @@ pub mod wasm {
     fn time_now() -> usize;
   }
 
+  struct WasmFsFile {
+    pos: usize,
+    bytes: Vec<u8>,
+  }
+
+  impl crate::DenoCacheEnvFsFile for WasmFsFile {
+    fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
+      let len = bytes.len().min(self.bytes.len() - self.pos);
+      bytes[..len].copy_from_slice(&self.bytes[self.pos..self.pos + len]);
+      self.pos += len;
+      Ok(len)
+    }
+
+    fn seek_relative(&mut self, amount: i64) -> std::io::Result<()> {
+      if amount < 0 {
+        self.pos = self.pos.saturating_sub(amount.unsigned_abs() as usize);
+      } else {
+        self.pos = (self.pos + amount as usize).min(self.bytes.len());
+      }
+      Ok(())
+    }
+  }
+
   #[derive(Clone, Debug)]
   struct WasmEnv;
 
   impl DenoCacheEnv for WasmEnv {
-    fn read_file_bytes(&self, path: &Path) -> std::io::Result<Option<Vec<u8>>> {
+    fn open_read(
+      &self,
+      path: &Path,
+    ) -> std::io::Result<Box<dyn crate::DenoCacheEnvFsFile>> {
+      let bytes = self.read_file_bytes(path)?;
+      Ok(Box::new(WasmFsFile { bytes, pos: 0 }))
+    }
+
+    fn read_file_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>> {
       let js_value =
         read_file_bytes(&path.to_string_lossy()).map_err(js_to_io_error)?;
       if js_value.is_null() || js_value.is_undefined() {
-        Ok(None)
+        Err(std::io::Error::new(ErrorKind::NotFound, ""))
       } else {
-        Ok(Some(js_sys::Uint8Array::from(js_value).to_vec()))
+        Ok(js_sys::Uint8Array::from(js_value).to_vec())
       }
     }
 
@@ -103,7 +137,7 @@ pub mod wasm {
     let url = parse_url(url).map_err(as_js_error)?;
     crate::cache::url_to_filename(&url)
       .map(|s| s.to_string_lossy().to_string())
-      .map_err(|e| as_js_error(e.into()))
+      .map_err(as_js_error)
   }
 
   #[wasm_bindgen]
@@ -124,17 +158,12 @@ pub mod wasm {
       get_headers(&self.cache, url)
     }
 
-    #[wasm_bindgen(js_name = getFileBytes)]
-    pub fn get_file_bytes(
+    pub fn get(
       &self,
       url: &str,
       maybe_checksum: Option<String>,
     ) -> Result<JsValue, JsValue> {
-      get_file_bytes(
-        &self.cache,
-        url,
-        maybe_checksum.as_deref(),
-      )
+      get_cache_entry(&self.cache, url, maybe_checksum.as_deref())
     }
 
     pub fn set(
@@ -154,16 +183,23 @@ pub mod wasm {
 
   #[wasm_bindgen]
   impl LocalHttpCache {
-    pub fn new(local_path: &str, global_path: &str, allow_global_to_local_copy: bool) -> Self {
+    pub fn new(
+      local_path: &str,
+      global_path: &str,
+      allow_global_to_local_copy: bool,
+    ) -> Self {
       console_error_panic_hook::set_once();
       let global =
         crate::GlobalHttpCache::new(PathBuf::from(global_path), WasmEnv);
-      let local =
-        crate::LocalHttpCache::new(PathBuf::from(local_path), Arc::new(global), if allow_global_to_local_copy {
+      let local = crate::LocalHttpCache::new(
+        PathBuf::from(local_path),
+        Arc::new(global),
+        if allow_global_to_local_copy {
           GlobalToLocalCopy::Allow
         } else {
           GlobalToLocalCopy::Disallow
-        });
+        },
+      );
       Self { cache: local }
     }
 
@@ -172,17 +208,12 @@ pub mod wasm {
       get_headers(&self.cache, url)
     }
 
-    #[wasm_bindgen(js_name = getFileBytes)]
-    pub fn get_file_bytes(
+    pub fn get(
       &self,
       url: &str,
       maybe_checksum: Option<String>,
     ) -> Result<JsValue, JsValue> {
-      get_file_bytes(
-        &self.cache,
-        url,
-        maybe_checksum.as_deref(),
-      )
+      get_cache_entry(&self.cache, url, maybe_checksum.as_deref())
     }
 
     pub fn set(
@@ -216,7 +247,7 @@ pub mod wasm {
       .map_err(as_js_error)
   }
 
-  fn get_file_bytes<Cache: HttpCache>(
+  fn get_cache_entry<Cache: HttpCache>(
     cache: &Cache,
     url: &str,
     maybe_checksum: Option<&str>,
@@ -225,11 +256,11 @@ pub mod wasm {
       cache: &Cache,
       url: &str,
       maybe_checksum: Option<Checksum>,
-    ) -> std::io::Result<Option<Vec<u8>>> {
+    ) -> std::io::Result<Option<CacheEntry>> {
       let url = parse_url(url)?;
       let key = cache.cache_item_key(&url)?;
-      match cache.read_file_bytes(&key, maybe_checksum) {
-        Ok(Some(bytes)) => Ok(Some(bytes)),
+      match cache.get(&key, maybe_checksum) {
+        Ok(Some(entry)) => Ok(Some(entry)),
         Ok(None) => Ok(None),
         Err(err) => match err {
           CacheReadFileError::Io(err) => Err(err),
@@ -240,20 +271,24 @@ pub mod wasm {
       }
     }
 
-    inner(
-      cache,
-      url,
-      maybe_checksum.map(Checksum::new),
-    )
-    .map(|text| match text {
-      Some(bytes) => {
-        let array = Uint8Array::new_with_length(bytes.len() as u32);
-        array.copy_from(&bytes);
-        JsValue::from(array)
-      }
-      None => JsValue::undefined(),
-    })
-    .map_err(as_js_error)
+    inner(cache, url, maybe_checksum.map(Checksum::new))
+      .map(|text| match text {
+        Some(entry) => {
+          let body = {
+            let array = Uint8Array::new_with_length(entry.body.len() as u32);
+            array.copy_from(&entry.body);
+            JsValue::from(array)
+          };
+          let headers: JsValue =
+            { serde_wasm_bindgen::to_value(&entry.metadata.headers).unwrap() };
+          let obj = Object::new();
+          Reflect::set(&obj, &JsValue::from_str("body"), &body).unwrap();
+          Reflect::set(&obj, &JsValue::from_str("headers"), &headers).unwrap();
+          JsValue::from(obj)
+        }
+        None => JsValue::undefined(),
+      })
+      .map_err(as_js_error)
   }
 
   fn set<Cache: HttpCache>(

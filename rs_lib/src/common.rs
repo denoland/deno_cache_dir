@@ -39,11 +39,15 @@ pub fn base_url_to_filename_parts(
 
 pub trait DenoCacheEnvFsFile {
   fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize>;
+  fn seek_relative(&mut self, amount: i64) -> std::io::Result<()>;
 }
 
 pub trait DenoCacheEnv: Send + Sync + std::fmt::Debug + Clone {
-  fn open_read(&self, path: &Path) -> std::io::Result<Box<dyn DenoCacheEnvFsFile>>;
-  fn read_file_bytes(&self, path: &Path) -> std::io::Result<Option<Vec<u8>>>;
+  fn open_read(
+    &self,
+    path: &Path,
+  ) -> std::io::Result<Box<dyn DenoCacheEnvFsFile>>;
+  fn read_file_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>>;
   fn atomic_write_file(&self, path: &Path, bytes: &[u8])
     -> std::io::Result<()>;
   fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>>;
