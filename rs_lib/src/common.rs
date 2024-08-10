@@ -37,7 +37,12 @@ pub fn base_url_to_filename_parts(
   Some(out)
 }
 
+pub trait DenoCacheEnvFsFile {
+  fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize>;
+}
+
 pub trait DenoCacheEnv: Send + Sync + std::fmt::Debug + Clone {
+  fn open_read(&self, path: &Path) -> std::io::Result<Box<dyn DenoCacheEnvFsFile>>;
   fn read_file_bytes(&self, path: &Path) -> std::io::Result<Option<Vec<u8>>>;
   fn atomic_write_file(&self, path: &Path, bytes: &[u8])
     -> std::io::Result<()>;

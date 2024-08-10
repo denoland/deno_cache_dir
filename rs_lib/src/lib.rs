@@ -14,6 +14,7 @@ pub use cache::HttpCache;
 pub use cache::HttpCacheItemKey;
 pub use cache::SerializedCachedUrlMetadata;
 pub use common::DenoCacheEnv;
+pub use common::DenoCacheEnvFsFile;
 pub use global::GlobalHttpCache;
 pub use local::LocalHttpCache;
 pub use local::LocalLspHttpCache;
