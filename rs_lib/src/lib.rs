@@ -129,13 +129,11 @@ pub mod wasm {
       &self,
       url: &str,
       maybe_checksum: Option<String>,
-      allow_global_to_local_copy: bool,
     ) -> Result<JsValue, JsValue> {
       get_file_bytes(
         &self.cache,
         url,
         maybe_checksum.as_deref(),
-        allow_global_to_local_copy,
       )
     }
 
@@ -156,12 +154,16 @@ pub mod wasm {
 
   #[wasm_bindgen]
   impl LocalHttpCache {
-    pub fn new(local_path: &str, global_path: &str) -> Self {
+    pub fn new(local_path: &str, global_path: &str, allow_global_to_local_copy: bool) -> Self {
       console_error_panic_hook::set_once();
       let global =
         crate::GlobalHttpCache::new(PathBuf::from(global_path), WasmEnv);
       let local =
-        crate::LocalHttpCache::new(PathBuf::from(local_path), Arc::new(global));
+        crate::LocalHttpCache::new(PathBuf::from(local_path), Arc::new(global), if allow_global_to_local_copy {
+          GlobalToLocalCopy::Allow
+        } else {
+          GlobalToLocalCopy::Disallow
+        });
       Self { cache: local }
     }
 
@@ -175,13 +177,11 @@ pub mod wasm {
       &self,
       url: &str,
       maybe_checksum: Option<String>,
-      allow_global_to_local_copy: bool,
     ) -> Result<JsValue, JsValue> {
       get_file_bytes(
         &self.cache,
         url,
         maybe_checksum.as_deref(),
-        allow_global_to_local_copy,
       )
     }
 
@@ -220,17 +220,15 @@ pub mod wasm {
     cache: &Cache,
     url: &str,
     maybe_checksum: Option<&str>,
-    allow_global_to_local_copy: bool,
   ) -> Result<JsValue, JsValue> {
     fn inner<Cache: HttpCache>(
       cache: &Cache,
       url: &str,
       maybe_checksum: Option<Checksum>,
-      allow_global_to_local: GlobalToLocalCopy,
     ) -> std::io::Result<Option<Vec<u8>>> {
       let url = parse_url(url)?;
       let key = cache.cache_item_key(&url)?;
-      match cache.read_file_bytes(&key, maybe_checksum, allow_global_to_local) {
+      match cache.read_file_bytes(&key, maybe_checksum) {
         Ok(Some(bytes)) => Ok(Some(bytes)),
         Ok(None) => Ok(None),
         Err(err) => match err {
@@ -242,16 +240,10 @@ pub mod wasm {
       }
     }
 
-    let allow_global_to_local = if allow_global_to_local_copy {
-      GlobalToLocalCopy::Allow
-    } else {
-      GlobalToLocalCopy::Disallow
-    };
     inner(
       cache,
       url,
       maybe_checksum.map(Checksum::new),
-      allow_global_to_local,
     )
     .map(|text| match text {
       Some(bytes) => {

@@ -147,7 +147,6 @@ pub trait HttpCache: Send + Sync + std::fmt::Debug {
     &self,
     key: &HttpCacheItemKey,
     maybe_checksum: Option<Checksum>,
-    allow_global_to_local: GlobalToLocalCopy,
   ) -> Result<Option<CacheEntry>, CacheReadFileError>;
   fn read_modified_time(
     &self,

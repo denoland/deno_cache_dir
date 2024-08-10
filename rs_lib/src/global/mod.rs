@@ -114,7 +114,6 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
     &self,
     key: &HttpCacheItemKey,
     maybe_checksum: Option<Checksum>,
-    _allow_global_to_local: GlobalToLocalCopy,
   ) -> Result<Option<CacheEntry>, CacheReadFileError> {
     #[cfg(debug_assertions)]
     debug_assert!(!key.is_local_key);
