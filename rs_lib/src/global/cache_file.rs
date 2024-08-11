@@ -21,7 +21,7 @@ pub fn write(
   let serialized_metadata_size_bytes =
     (serialized_metadata.len() as u32).to_le_bytes();
   let content_size_bytes = (content.len() as u32).to_le_bytes();
-  let capacity = MAGIC_BYTES.len() * 3
+  let capacity = MAGIC_BYTES.len() * 2
     + serialized_metadata_size_bytes.len()
     + content_size_bytes.len()
     + serialized_metadata.len()
@@ -33,7 +33,6 @@ pub fn write(
   result.extend(serialized_metadata);
   result.extend(MAGIC_BYTES.as_bytes());
   result.extend(content);
-  result.extend(MAGIC_BYTES.as_bytes());
   debug_assert_eq!(result.len(), capacity);
   env.atomic_write_file(path, &result)?;
   Ok(())
@@ -56,7 +55,7 @@ pub fn read(
   };
 
   let Some((file_bytes, content)) =
-    read_exact_bytes_with_trailer(file_bytes, prelude.content_len)
+    read_exact_bytes(file_bytes, prelude.content_len)
   else {
     return Ok(None);
   };
@@ -67,8 +66,7 @@ pub fn read(
 
   // reuse the original_file_bytes vector to store the content
   let content_len = content.len();
-  let content_index =
-    original_file_bytes.len() - content_len - MAGIC_BYTES.len();
+  let content_index = original_file_bytes.len() - content_len;
   original_file_bytes
     .copy_within(content_index..content_index + content_len, 0);
   original_file_bytes.truncate(content_len);
@@ -97,8 +95,7 @@ pub fn read_metadata<TMetadata: DeserializeOwned>(
 
   // skip over the content and just ensure the file isn't corrupted and
   // has the trailer in the correct position
-  let Some((file_bytes, _)) =
-    read_exact_bytes_with_trailer(file_bytes, prelude.content_len)
+  let Some((file_bytes, _)) = read_exact_bytes(file_bytes, prelude.content_len)
   else {
     return Ok(None);
   };
