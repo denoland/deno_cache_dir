@@ -18,20 +18,16 @@ pub fn write(
   metadata: &SerializedCachedUrlMetadata,
 ) -> std::io::Result<()> {
   let serialized_metadata = serde_json::to_vec(&metadata).unwrap();
-  let serialized_metadata_size_bytes =
-    (serialized_metadata.len() as u32).to_le_bytes();
   let content_size_bytes = (content.len() as u32).to_le_bytes();
-  let capacity = MAGIC_BYTES.len()
-    + serialized_metadata_size_bytes.len()
-    + content_size_bytes.len()
+  let capacity = content.len()
     + serialized_metadata.len()
-    + content.len();
+    + content_size_bytes.len()
+    + MAGIC_BYTES.len();
   let mut result = Vec::with_capacity(capacity);
-  result.extend(MAGIC_BYTES.as_bytes());
-  result.extend(serialized_metadata_size_bytes);
-  result.extend(content_size_bytes);
-  result.extend(serialized_metadata);
   result.extend(content);
+  result.extend(serialized_metadata);
+  result.extend(content_size_bytes);
+  result.extend(MAGIC_BYTES.as_bytes());
   debug_assert_eq!(result.len(), capacity);
   env.atomic_write_file(path, &result)?;
   Ok(())
@@ -47,28 +43,14 @@ pub fn read(
     Err(err) => return Err(err),
   };
 
-  let Some((file_bytes, (prelude, metadata))) =
+  let Some((content, metadata)) =
     read_prelude_and_metadata(&original_file_bytes)
   else {
     return Ok(None);
   };
 
-  let Some((file_bytes, content)) =
-    read_exact_bytes(file_bytes, prelude.content_len)
-  else {
-    return Ok(None);
-  };
-
-  if !file_bytes.is_empty() {
-    return Ok(None); // corrupt
-  }
-
-  // reuse the original_file_bytes vector to store the content
-  let content_len = content.len();
-  let content_index = original_file_bytes.len() - content_len;
-  original_file_bytes
-    .copy_within(content_index..content_index + content_len, 0);
-  original_file_bytes.truncate(content_len);
+  // truncate the original bytes to just the content
+  original_file_bytes.truncate(content.len());
 
   Ok(Some(CacheEntry {
     metadata,
@@ -86,61 +68,46 @@ pub fn read_metadata<TMetadata: DeserializeOwned>(
     Err(err) => return Err(err),
   };
 
-  let Some((file_bytes, (prelude, metadata))) =
+  let Some((_content_bytes, metadata)) =
     read_prelude_and_metadata::<TMetadata>(&file_bytes)
   else {
     return Ok(None);
   };
 
-  // skip over the content and just ensure the file isn't corrupted and
-  // has the trailer in the correct position
-  let Some((file_bytes, _)) = read_exact_bytes(file_bytes, prelude.content_len)
-  else {
-    return Ok(None);
-  };
-  if !file_bytes.is_empty() {
-    return Ok(None); // corrupt
-  }
-
   Ok(Some(metadata))
 }
 
-type PreludeAndMetadata<TMetadata> = (Prelude, TMetadata);
-
 fn read_prelude_and_metadata<TMetadata: DeserializeOwned>(
   file_bytes: &[u8],
-) -> Option<(&[u8], PreludeAndMetadata<TMetadata>)> {
+) -> Option<(&[u8], TMetadata)> {
   let file_bytes = read_magic_bytes(file_bytes)?;
-  let (file_bytes, prelude) = read_prelude(file_bytes)?;
+  let (file_bytes, content_len) = read_content_length(file_bytes)?;
 
-  let (file_bytes, header_bytes) =
-    read_exact_bytes(file_bytes, prelude.metadata_len)?;
+  let metadata_len = file_bytes.len() - content_len;
+  let (file_bytes, header_bytes) = read_exact_bytes(file_bytes, metadata_len)?;
 
   let serialized_metadata =
     serde_json::from_slice::<TMetadata>(header_bytes).ok()?;
 
-  Some((file_bytes, (prelude, serialized_metadata)))
+  if file_bytes.len() != content_len {
+    // corrupt
+    return None;
+  }
+
+  Some((file_bytes, serialized_metadata))
 }
 
-struct Prelude {
-  metadata_len: usize,
-  content_len: usize,
-}
+fn read_content_length(file_bytes: &[u8]) -> Option<(&[u8], usize)> {
+  if file_bytes.len() < 4 {
+    return None;
+  }
 
-fn read_prelude(file_bytes: &[u8]) -> Option<(&[u8], Prelude)> {
   let mut u32_buf: [u8; 4] = [0; 4];
-  u32_buf.copy_from_slice(&file_bytes[..4]);
-  let metadata_len = u32::from_le_bytes(u32_buf) as usize;
-  u32_buf.copy_from_slice(&file_bytes[4..8]);
+  let read_index = file_bytes.len() - 4;
+  u32_buf.copy_from_slice(&file_bytes[read_index..]);
   let content_len = u32::from_le_bytes(u32_buf) as usize;
 
-  Some((
-    &file_bytes[8..],
-    Prelude {
-      metadata_len,
-      content_len,
-    },
-  ))
+  Some((&file_bytes[..read_index], content_len))
 }
 
 fn read_magic_bytes(file_bytes: &[u8]) -> Option<&[u8]> {
@@ -157,5 +124,6 @@ fn read_exact_bytes(file_bytes: &[u8], size: usize) -> Option<(&[u8], &[u8])> {
   if file_bytes.len() < size {
     return None;
   }
-  Some((&file_bytes[size..], &file_bytes[..size]))
+  let pos = file_bytes.len() - size;
+  Some((&file_bytes[..pos], &file_bytes[pos..]))
 }
