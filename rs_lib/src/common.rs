@@ -1,8 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
-use std::path::Path;
-use std::time::SystemTime;
 
 use url::Url;
 
@@ -35,24 +33,6 @@ pub fn base_url_to_filename_parts(
   };
 
   Some(out)
-}
-
-pub trait DenoCacheEnvFsFile {
-  fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize>;
-  fn seek_relative(&mut self, amount: i64) -> std::io::Result<()>;
-}
-
-pub trait DenoCacheEnv: Send + Sync + std::fmt::Debug + Clone {
-  fn open_read(
-    &self,
-    path: &Path,
-  ) -> std::io::Result<Box<dyn DenoCacheEnvFsFile>>;
-  fn read_file_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>>;
-  fn atomic_write_file(&self, path: &Path, bytes: &[u8])
-    -> std::io::Result<()>;
-  fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>>;
-  fn is_file(&self, path: &Path) -> bool;
-  fn time_now(&self) -> SystemTime;
 }
 
 pub fn checksum(v: &[u8]) -> String {

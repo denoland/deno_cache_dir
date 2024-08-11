@@ -8,7 +8,7 @@ use url::Url;
 
 use super::cache::HttpCache;
 use super::cache::HttpCacheItemKey;
-use super::common::DenoCacheEnv;
+use super::env::DenoCacheEnv;
 use crate::cache::url_to_filename;
 use crate::cache::CacheEntry;
 use crate::cache::CacheReadFileError;

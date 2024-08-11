@@ -1,84 +1,18 @@
 use std::collections::HashMap;
-use std::io::Read;
-use std::io::Seek;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::SystemTime;
 
 use deno_cache_dir::CacheReadFileError;
 use deno_cache_dir::Checksum;
-use deno_cache_dir::DenoCacheEnv;
-use deno_cache_dir::DenoCacheEnvFsFile;
 use deno_cache_dir::GlobalHttpCache;
 use deno_cache_dir::GlobalToLocalCopy;
 use deno_cache_dir::HttpCache;
 use deno_cache_dir::LocalHttpCache;
 use deno_cache_dir::LocalLspHttpCache;
+use deno_cache_dir::TestRealDenoCacheEnv;
 use serde_json::json;
 use tempfile::TempDir;
 use url::Url;
-
-pub struct TestRealFsFile(std::fs::File);
-
-impl DenoCacheEnvFsFile for TestRealFsFile {
-  fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
-    self.0.read(bytes)
-  }
-
-  fn seek_relative(&mut self, amount: i64) -> std::io::Result<()> {
-    self.0.seek_relative(amount)
-  }
-}
-
-#[derive(Debug, Clone)]
-struct TestRealEnv;
-
-impl DenoCacheEnv for TestRealEnv {
-  fn open_read(
-    &self,
-    path: &Path,
-  ) -> std::io::Result<Box<dyn DenoCacheEnvFsFile>> {
-    let fs_file = std::fs::File::open(path)?;
-    Ok(Box::new(TestRealFsFile(fs_file)))
-  }
-
-  fn read_file_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>> {
-    std::fs::read(path)
-  }
-
-  fn atomic_write_file(
-    &self,
-    path: &Path,
-    bytes: &[u8],
-  ) -> std::io::Result<()> {
-    match std::fs::write(path, bytes) {
-      Ok(()) => Ok(()),
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-        std::fs::create_dir_all(path.parent().unwrap())?;
-        std::fs::write(path, bytes)
-      }
-      Err(err) => Err(err),
-    }
-  }
-
-  fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>> {
-    match std::fs::metadata(path) {
-      Ok(metadata) => Ok(Some(
-        metadata.modified().unwrap_or_else(|_| SystemTime::now()),
-      )),
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
-      Err(err) => Err(err),
-    }
-  }
-
-  fn is_file(&self, path: &Path) -> bool {
-    path.is_file()
-  }
-
-  fn time_now(&self) -> SystemTime {
-    SystemTime::now()
-  }
-}
 
 #[test]
 fn test_global_create_cache() {
@@ -93,7 +27,7 @@ fn test_global_create_cache() {
   // doesn't make sense to return error in such specific scenarios.
   // For more details check issue:
   // https://github.com/denoland/deno/issues/5688
-  let fs = TestRealEnv;
+  let fs = TestRealDenoCacheEnv;
   let cache = GlobalHttpCache::new(cache_path.clone(), fs);
   assert!(!cache.get_global_cache_location().exists());
   let url = Url::parse("http://example.com/foo/bar.js").unwrap();
@@ -105,7 +39,7 @@ fn test_global_create_cache() {
 #[test]
 fn test_global_get_set() {
   let dir = TempDir::new().unwrap();
-  let fs = TestRealEnv;
+  let fs = TestRealDenoCacheEnv;
   let cache = GlobalHttpCache::new(dir.path().to_path_buf(), fs);
   let url = Url::parse("https://deno.land/x/welcome.ts").unwrap();
   let mut headers = HashMap::new();
@@ -162,7 +96,7 @@ fn test_local_global_cache() {
   let temp_dir = TempDir::new().unwrap();
   let global_cache_path = temp_dir.path().join("global");
   let local_cache_path = temp_dir.path().join("local");
-  let fs = TestRealEnv;
+  let fs = TestRealDenoCacheEnv;
   let global_cache =
     Arc::new(GlobalHttpCache::new(global_cache_path.clone(), fs));
   let local_cache = LocalHttpCache::new(
@@ -534,7 +468,7 @@ fn test_lsp_local_cache() {
   let temp_dir = TempDir::new().unwrap();
   let global_cache_path = temp_dir.path().join("global");
   let local_cache_path = temp_dir.path().join("local");
-  let fs = TestRealEnv;
+  let fs = TestRealDenoCacheEnv;
   let global_cache =
     Arc::new(GlobalHttpCache::new(global_cache_path.to_path_buf(), fs));
   let local_cache = LocalHttpCache::new(

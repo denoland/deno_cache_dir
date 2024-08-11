@@ -2,6 +2,7 @@
 
 mod cache;
 mod common;
+mod env;
 mod global;
 mod local;
 
@@ -13,11 +14,14 @@ pub use cache::GlobalToLocalCopy;
 pub use cache::HttpCache;
 pub use cache::HttpCacheItemKey;
 pub use cache::SerializedCachedUrlMetadata;
-pub use common::DenoCacheEnv;
-pub use common::DenoCacheEnvFsFile;
+pub use env::DenoCacheEnv;
+pub use env::DenoCacheEnvFsFile;
 pub use global::GlobalHttpCache;
 pub use local::LocalHttpCache;
 pub use local::LocalLspHttpCache;
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub use env::TestRealDenoCacheEnv;
 
 #[cfg(feature = "wasm")]
 pub mod wasm {
