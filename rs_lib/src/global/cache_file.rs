@@ -17,9 +17,8 @@ pub fn write(
 ) -> std::io::Result<()> {
   let serialized_metadata = serde_json::to_vec(&metadata).unwrap();
   let content_size_bytes = (content.len() as u32).to_le_bytes();
-  let capacity = content.len()
-    + serialized_metadata.len()
-    + content_size_bytes.len();
+  let capacity =
+    content.len() + serialized_metadata.len() + content_size_bytes.len();
   let mut result = Vec::with_capacity(capacity);
   result.extend(content);
   result.extend(serialized_metadata);
