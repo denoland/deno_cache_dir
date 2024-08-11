@@ -15,7 +15,6 @@ pub use cache::HttpCache;
 pub use cache::HttpCacheItemKey;
 pub use cache::SerializedCachedUrlMetadata;
 pub use env::DenoCacheEnv;
-pub use env::DenoCacheEnvFsFile;
 pub use global::GlobalHttpCache;
 pub use local::LocalHttpCache;
 pub use local::LocalLspHttpCache;
@@ -58,41 +57,10 @@ pub mod wasm {
     fn time_now() -> usize;
   }
 
-  struct WasmFsFile {
-    pos: usize,
-    bytes: Vec<u8>,
-  }
-
-  impl crate::DenoCacheEnvFsFile for WasmFsFile {
-    fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
-      let len = bytes.len().min(self.bytes.len() - self.pos);
-      bytes[..len].copy_from_slice(&self.bytes[self.pos..self.pos + len]);
-      self.pos += len;
-      Ok(len)
-    }
-
-    fn seek_relative(&mut self, amount: i64) -> std::io::Result<()> {
-      if amount < 0 {
-        self.pos = self.pos.saturating_sub(amount.unsigned_abs() as usize);
-      } else {
-        self.pos = (self.pos + amount as usize).min(self.bytes.len());
-      }
-      Ok(())
-    }
-  }
-
   #[derive(Clone, Debug)]
   struct WasmEnv;
 
   impl DenoCacheEnv for WasmEnv {
-    fn open_read(
-      &self,
-      path: &Path,
-    ) -> std::io::Result<Box<dyn crate::DenoCacheEnvFsFile>> {
-      let bytes = self.read_file_bytes(path)?;
-      Ok(Box::new(WasmFsFile { bytes, pos: 0 }))
-    }
-
     fn read_file_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>> {
       let js_value =
         read_file_bytes(&path.to_string_lossy()).map_err(js_to_io_error)?;
