@@ -21,7 +21,7 @@ pub fn write(
   let serialized_metadata_size_bytes =
     (serialized_metadata.len() as u32).to_le_bytes();
   let content_size_bytes = (content.len() as u32).to_le_bytes();
-  let capacity = MAGIC_BYTES.len() * 2
+  let capacity = MAGIC_BYTES.len()
     + serialized_metadata_size_bytes.len()
     + content_size_bytes.len()
     + serialized_metadata.len()
@@ -31,7 +31,6 @@ pub fn write(
   result.extend(serialized_metadata_size_bytes);
   result.extend(content_size_bytes);
   result.extend(serialized_metadata);
-  result.extend(MAGIC_BYTES.as_bytes());
   result.extend(content);
   debug_assert_eq!(result.len(), capacity);
   env.atomic_write_file(path, &result)?;
@@ -115,7 +114,7 @@ fn read_prelude_and_metadata<TMetadata: DeserializeOwned>(
   let (file_bytes, prelude) = read_prelude(file_bytes)?;
 
   let (file_bytes, header_bytes) =
-    read_exact_bytes_with_trailer(file_bytes, prelude.metadata_len)?;
+    read_exact_bytes(file_bytes, prelude.metadata_len)?;
 
   let serialized_metadata =
     serde_json::from_slice::<TMetadata>(header_bytes).ok()?;
@@ -142,15 +141,6 @@ fn read_prelude(file_bytes: &[u8]) -> Option<(&[u8], Prelude)> {
       content_len,
     },
   ))
-}
-
-fn read_exact_bytes_with_trailer(
-  file_bytes: &[u8],
-  size: usize,
-) -> Option<(&[u8], &[u8])> {
-  let (file_bytes, bytes) = read_exact_bytes(file_bytes, size)?;
-  let file_bytes = read_magic_bytes(file_bytes)?;
-  Some((file_bytes, bytes))
 }
 
 fn read_magic_bytes(file_bytes: &[u8]) -> Option<&[u8]> {
