@@ -9,8 +9,6 @@ use crate::cache::CacheEntry;
 use crate::DenoCacheEnv;
 use crate::SerializedCachedUrlMetadata;
 
-const MAGIC_BYTES: &str = "d3n0l4nd";
-
 pub fn write(
   env: &impl DenoCacheEnv,
   path: &Path,
@@ -21,13 +19,11 @@ pub fn write(
   let content_size_bytes = (content.len() as u32).to_le_bytes();
   let capacity = content.len()
     + serialized_metadata.len()
-    + content_size_bytes.len()
-    + MAGIC_BYTES.len();
+    + content_size_bytes.len();
   let mut result = Vec::with_capacity(capacity);
   result.extend(content);
   result.extend(serialized_metadata);
   result.extend(content_size_bytes);
-  result.extend(MAGIC_BYTES.as_bytes());
   debug_assert_eq!(result.len(), capacity);
   env.atomic_write_file(path, &result)?;
   Ok(())
@@ -80,7 +76,6 @@ pub fn read_metadata<TMetadata: DeserializeOwned>(
 fn read_prelude_and_metadata<TMetadata: DeserializeOwned>(
   file_bytes: &[u8],
 ) -> Option<(&[u8], TMetadata)> {
-  let file_bytes = read_magic_bytes(file_bytes)?;
   let (file_bytes, content_len) = read_content_length(file_bytes)?;
 
   let metadata_len = file_bytes.len() - content_len;
@@ -108,15 +103,6 @@ fn read_content_length(file_bytes: &[u8]) -> Option<(&[u8], usize)> {
   let content_len = u32::from_le_bytes(u32_buf) as usize;
 
   Some((&file_bytes[..read_index], content_len))
-}
-
-fn read_magic_bytes(file_bytes: &[u8]) -> Option<&[u8]> {
-  let (file_bytes, magic_bytes) =
-    read_exact_bytes(file_bytes, MAGIC_BYTES.len())?;
-  if magic_bytes != MAGIC_BYTES.as_bytes() {
-    return None;
-  }
-  Some(file_bytes)
 }
 
 #[inline]
