@@ -7,6 +7,7 @@ mod global;
 mod local;
 
 pub use cache::url_to_filename;
+pub use cache::CacheEntry;
 pub use cache::CacheReadFileError;
 pub use cache::Checksum;
 pub use cache::ChecksumIntegrityError;
