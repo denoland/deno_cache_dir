@@ -39,6 +39,8 @@ import { type CacheSetting, FileFetcher } from "./file_fetcher.ts";
 
 export { FetchCacher } from "./cache.ts";
 export { DenoDir } from "./deno_dir.ts";
+export { HttpCache } from "./http_cache.ts";
+export { DiskCache } from "./disk_cache.ts";
 export { type CacheSetting, FileFetcher } from "./file_fetcher.ts";
 
 export interface Loader {
