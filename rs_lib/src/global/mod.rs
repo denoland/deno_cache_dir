@@ -41,11 +41,11 @@ impl<Env: DenoCacheEnv> GlobalHttpCache<Env> {
     &self,
     url: &Url,
   ) -> std::io::Result<PathBuf> {
-    Ok(self.path.join(url_to_filename(url)?).with_extension("bin"))
+    Ok(self.path.join(url_to_filename(url)?))
   }
 
   fn get_cache_filepath(&self, url: &Url) -> std::io::Result<PathBuf> {
-    Ok(self.path.join(url_to_filename(url)?).with_extension("bin"))
+    Ok(self.path.join(url_to_filename(url)?))
   }
 
   #[inline]

@@ -9,6 +9,11 @@ use crate::cache::CacheEntry;
 use crate::DenoCacheEnv;
 use crate::SerializedCachedUrlMetadata;
 
+// File format:
+// <content>\n// denoCacheMetadata=<metadata><EOF>
+
+const LAST_LINE_PREFIX: &[u8] = b"\n// denoCacheMetadata=";
+
 pub fn write(
   env: &impl DenoCacheEnv,
   path: &Path,
@@ -16,13 +21,12 @@ pub fn write(
   metadata: &SerializedCachedUrlMetadata,
 ) -> std::io::Result<()> {
   let serialized_metadata = serde_json::to_vec(&metadata).unwrap();
-  let content_size_bytes = (content.len() as u32).to_le_bytes();
   let capacity =
-    content.len() + serialized_metadata.len() + content_size_bytes.len();
+    content.len() + LAST_LINE_PREFIX.len() + serialized_metadata.len();
   let mut result = Vec::with_capacity(capacity);
   result.extend(content);
+  result.extend(LAST_LINE_PREFIX);
   result.extend(serialized_metadata);
-  result.extend(content_size_bytes);
   debug_assert_eq!(result.len(), capacity);
   env.atomic_write_file(path, &result)?;
   Ok(())
@@ -39,7 +43,7 @@ pub fn read(
   };
 
   let Some((content, metadata)) =
-    read_prelude_and_metadata(&original_file_bytes)
+    read_content_and_metadata(&original_file_bytes)
   else {
     return Ok(None);
   };
@@ -64,7 +68,7 @@ pub fn read_metadata<TMetadata: DeserializeOwned>(
   };
 
   let Some((_content_bytes, metadata)) =
-    read_prelude_and_metadata::<TMetadata>(&file_bytes)
+    read_content_and_metadata::<TMetadata>(&file_bytes)
   else {
     return Ok(None);
   };
@@ -72,43 +76,22 @@ pub fn read_metadata<TMetadata: DeserializeOwned>(
   Ok(Some(metadata))
 }
 
-fn read_prelude_and_metadata<TMetadata: DeserializeOwned>(
+fn read_content_and_metadata<TMetadata: DeserializeOwned>(
   file_bytes: &[u8],
 ) -> Option<(&[u8], TMetadata)> {
-  let (file_bytes, content_len) = read_content_length(file_bytes)?;
-
-  let metadata_len = file_bytes.len() - content_len;
-  let (file_bytes, header_bytes) = read_exact_bytes(file_bytes, metadata_len)?;
-
+  let (file_bytes, metadata_bytes) = split_content_metadata(file_bytes)?;
   let serialized_metadata =
-    serde_json::from_slice::<TMetadata>(header_bytes).ok()?;
-
-  if file_bytes.len() != content_len {
-    // corrupt
-    return None;
-  }
+    serde_json::from_slice::<TMetadata>(metadata_bytes).ok()?;
 
   Some((file_bytes, serialized_metadata))
 }
 
-fn read_content_length(file_bytes: &[u8]) -> Option<(&[u8], usize)> {
-  if file_bytes.len() < 4 {
+fn split_content_metadata(file_bytes: &[u8]) -> Option<(&[u8], &[u8])> {
+  let last_newline_index = file_bytes.iter().rposition(|&b| b == b'\n')?;
+
+  let (content, trailing_bytes) = file_bytes.split_at(last_newline_index);
+  if !trailing_bytes.starts_with(LAST_LINE_PREFIX) {
     return None;
   }
-
-  let mut u32_buf: [u8; 4] = [0; 4];
-  let read_index = file_bytes.len() - 4;
-  u32_buf.copy_from_slice(&file_bytes[read_index..]);
-  let content_len = u32::from_le_bytes(u32_buf) as usize;
-
-  Some((&file_bytes[..read_index], content_len))
-}
-
-#[inline]
-fn read_exact_bytes(file_bytes: &[u8], size: usize) -> Option<(&[u8], &[u8])> {
-  if file_bytes.len() < size {
-    return None;
-  }
-  let pos = file_bytes.len() - size;
-  Some((&file_bytes[..pos], &file_bytes[pos..]))
+  Some((content, &trailing_bytes[LAST_LINE_PREFIX.len()..]))
 }
