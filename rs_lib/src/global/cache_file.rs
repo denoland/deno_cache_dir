@@ -90,8 +90,6 @@ fn split_content_metadata(file_bytes: &[u8]) -> Option<(&[u8], &[u8])> {
   let last_newline_index = file_bytes.iter().rposition(|&b| b == b'\n')?;
 
   let (content, trailing_bytes) = file_bytes.split_at(last_newline_index);
-  if !trailing_bytes.starts_with(LAST_LINE_PREFIX) {
-    return None;
-  }
-  Some((content, &trailing_bytes[LAST_LINE_PREFIX.len()..]))
+  let metadata = trailing_bytes.strip_prefix(LAST_LINE_PREFIX)?;
+  Some((content, metadata))
 }
