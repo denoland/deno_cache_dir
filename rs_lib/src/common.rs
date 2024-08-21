@@ -1,31 +1,35 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 use url::Url;
 
 pub type HeadersMap = HashMap<String, String>;
 
-pub fn base_url_to_filename_parts(
-  url: &Url,
+pub fn base_url_to_filename_parts<'a>(
+  url: &'a Url,
   port_separator: &str,
-) -> Option<Vec<String>> {
+) -> Option<Vec<Cow<'a, str>>> {
   let mut out = Vec::with_capacity(2);
 
   let scheme = url.scheme();
-  out.push(scheme.to_string());
 
   match scheme {
     "http" | "https" => {
+      out.push(Cow::Borrowed(scheme));
+
       let host = url.host_str().unwrap();
       let host_port = match url.port() {
         // underscores are not allowed in domains, so adding one here is fine
-        Some(port) => format!("{host}{port_separator}{port}"),
-        None => host.to_string(),
+        Some(port) => Cow::Owned(format!("{host}{port_separator}{port}")),
+        None => Cow::Borrowed(host),
       };
       out.push(host_port);
     }
-    "data" | "blob" => (),
+    "data" | "blob" => {
+      out.push(Cow::Borrowed(scheme));
+    },
     scheme => {
       log::debug!("Don't know how to create cache name for scheme: {}", scheme);
       return None;
