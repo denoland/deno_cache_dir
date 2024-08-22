@@ -20,14 +20,27 @@ pub fn write(
   content: &[u8],
   metadata: &SerializedCachedUrlMetadata,
 ) -> std::io::Result<()> {
-  let serialized_metadata = serde_json::to_vec(&metadata).unwrap();
-  let capacity =
-    content.len() + LAST_LINE_PREFIX.len() + serialized_metadata.len();
+  fn estimate_metadata_capacity(
+    metadata: &SerializedCachedUrlMetadata,
+  ) -> usize {
+    metadata
+      .headers
+      .iter()
+      .map(|(k, v)| k.len() + v.len() + 6)
+      .sum::<usize>()
+      + metadata.url.len()
+      + metadata.time.as_ref().map(|_| 14).unwrap_or(0)
+      + 128 // overestimate
+  }
+
+  let capacity = content.len()
+    + LAST_LINE_PREFIX.len()
+    + estimate_metadata_capacity(metadata);
   let mut result = Vec::with_capacity(capacity);
   result.extend(content);
   result.extend(LAST_LINE_PREFIX);
-  result.extend(serialized_metadata);
-  debug_assert_eq!(result.len(), capacity);
+  serde_json::to_writer(&mut result, &metadata).unwrap();
+  debug_assert!(result.len() < capacity, "{} < {}", result.len(), capacity);
   env.atomic_write_file(path, &result)?;
   Ok(())
 }
