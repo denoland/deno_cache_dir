@@ -5,6 +5,7 @@ import { dirname, isAbsolute, join } from "@std/path";
 import { readAll, writeAll } from "@std/io";
 import { assert, CACHE_PERM } from "./util.ts";
 import { instantiate } from "./lib/deno_cache_dir.generated.js";
+import type { RequestDestination } from "./http_cache.ts";
 
 export class DiskCache {
   location: string;
@@ -35,8 +36,11 @@ export class DiskCache {
     file.close();
   }
 
-  static async getCacheFilename(url: URL): Promise<string> {
+  static async getCacheFilename(
+    url: URL,
+    destination: RequestDestination,
+  ): Promise<string> {
     const { url_to_filename } = await instantiate();
-    return url_to_filename(url.toString());
+    return url_to_filename(url.toString(), destination);
   }
 }

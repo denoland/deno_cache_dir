@@ -2,6 +2,7 @@
 
 import type { LoadResponse } from "@deno/graph";
 import type { CacheSetting, FileFetcher } from "./file_fetcher.ts";
+import { RequestDestination } from "./http_cache.ts";
 
 /** Provides an interface to Deno's CLI cache.
  *
@@ -21,6 +22,11 @@ export class FetchCacher {
     checksum?: string,
   ): Promise<LoadResponse | undefined> => {
     const url = new URL(specifier);
-    return this.#fileFetcher.fetchOnce(url, { cacheSetting, checksum });
+    return this.#fileFetcher.fetchOnce(
+      url,
+      // todo(THIS PR): hook this up to deno graph
+      RequestDestination.Script,
+      { cacheSetting, checksum },
+    );
   };
 }

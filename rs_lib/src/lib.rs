@@ -46,7 +46,7 @@ pub mod wasm {
   use crate::Checksum;
   use crate::DenoCacheEnv;
   use crate::HttpCache;
-use crate::HttpCacheItemKeyDestination;
+  use crate::HttpCacheItemKeyDestination;
 
   #[wasm_bindgen(module = "/fs.js")]
   extern "C" {
@@ -107,14 +107,14 @@ use crate::HttpCacheItemKeyDestination;
   }
 
   #[wasm_bindgen]
-  pub fn url_to_filename(url: &str, destination: usize) -> Result<String, JsValue> {
+  pub fn url_to_filename(
+    url: &str,
+    destination: usize,
+  ) -> Result<String, JsValue> {
     console_error_panic_hook::set_once();
     let url = parse_url(url).map_err(as_js_error)?;
     let destination = parse_destination(destination).map_err(as_js_error)?;
-    crate::cache::url_to_filename(
-      &url,
-      destination,
-    )
+    crate::cache::url_to_filename(&url, destination)
       .map(|s| s.to_string_lossy().to_string())
       .map_err(as_js_error)
   }
@@ -189,7 +189,11 @@ use crate::HttpCacheItemKeyDestination;
     }
 
     #[wasm_bindgen(js_name = getHeaders)]
-    pub fn get_headers(&self, url: &str, destination: usize) -> Result<JsValue, JsValue> {
+    pub fn get_headers(
+      &self,
+      url: &str,
+      destination: usize,
+    ) -> Result<JsValue, JsValue> {
       get_headers(&self.cache, url, destination)
     }
 
@@ -205,7 +209,7 @@ use crate::HttpCacheItemKeyDestination;
     pub fn set(
       &self,
       url: &str,
-    destination: usize,
+      destination: usize,
       headers: JsValue,
       text: &[u8],
     ) -> Result<(), JsValue> {
@@ -216,12 +220,12 @@ use crate::HttpCacheItemKeyDestination;
   fn get_headers<Cache: HttpCache>(
     cache: &Cache,
     url: &str,
-    destination: usize
+    destination: usize,
   ) -> Result<JsValue, JsValue> {
     fn inner<Cache: HttpCache>(
       cache: &Cache,
       url: &str,
-      destination: usize
+      destination: usize,
     ) -> std::io::Result<Option<HeadersMap>> {
       let url = parse_url(url)?;
       let destination = parse_destination(destination)?;
@@ -298,7 +302,7 @@ use crate::HttpCacheItemKeyDestination;
   fn set<Cache: HttpCache>(
     cache: &Cache,
     url: &str,
-      destination: usize,
+    destination: usize,
     headers: JsValue,
     content: &[u8],
   ) -> Result<(), JsValue> {
@@ -326,7 +330,9 @@ use crate::HttpCacheItemKeyDestination;
       .map_err(|e| std::io::Error::new(ErrorKind::InvalidInput, e.to_string()))
   }
 
-  fn parse_destination(destination: usize) -> std::io::Result<HttpCacheItemKeyDestination> {
+  fn parse_destination(
+    destination: usize,
+  ) -> std::io::Result<HttpCacheItemKeyDestination> {
     match destination {
       0 => Ok(HttpCacheItemKeyDestination::Script),
       1 => Ok(HttpCacheItemKeyDestination::Json),

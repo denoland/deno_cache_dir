@@ -5,6 +5,7 @@ import { fromFileUrl } from "@std/path";
 import * as colors from "@std/fmt/colors";
 import type { LoadResponse } from "@deno/graph";
 import type { HttpCache, HttpCacheGetOptions } from "./http_cache.ts";
+import { RequestDestination } from "./http_cache.ts";
 
 /**
  * A setting that determines how the cache is handled for remote dependencies.
@@ -134,10 +135,16 @@ export class FileFetcher {
 
   async #fetchBlobDataUrl(
     specifier: URL,
+    destination: RequestDestination,
     options: ResolvedFetchOptions,
     httpCache: HttpCache,
   ): Promise<LoadResponse> {
-    const cached = this.fetchCachedOnce(specifier, options, httpCache);
+    const cached = this.fetchCachedOnce(
+      specifier,
+      destination,
+      options,
+      httpCache,
+    );
     if (cached) {
       return cached;
     }
@@ -148,13 +155,13 @@ export class FileFetcher {
       );
     }
 
-    const response = await fetchWithRetries(specifier.toString());
+    const response = await fetchWithRetries(specifier.toString(), destination);
     const content = new Uint8Array(await response.arrayBuffer());
     const headers: Record<string, string> = {};
     for (const [key, value] of response.headers) {
       headers[key.toLowerCase()] = value;
     }
-    httpCache.set(specifier, headers, content);
+    httpCache.set(specifier, destination, headers, content);
     return {
       kind: "module",
       specifier: specifier.toString(),
@@ -165,10 +172,11 @@ export class FileFetcher {
 
   fetchCachedOnce(
     specifier: URL,
+    destination: RequestDestination,
     options: ResolvedFetchOptions,
     httpCache: HttpCache,
   ): LoadResponse | undefined {
-    const cacheEntry = httpCache.get(specifier, options);
+    const cacheEntry = httpCache.get(specifier, destination, options);
     if (!cacheEntry) {
       return undefined;
     }
@@ -190,12 +198,14 @@ export class FileFetcher {
 
   async #fetchRemoteOnce(
     specifier: URL,
+    destination: RequestDestination,
     options: ResolvedFetchOptions,
     httpCache: HttpCache,
   ): Promise<LoadResponse | undefined> {
     if (shouldUseCache(options.cacheSetting, specifier)) {
       const response = this.fetchCachedOnce(
         specifier,
+        destination,
         options,
         httpCache,
       );
@@ -211,7 +221,7 @@ export class FileFetcher {
     }
 
     const requestHeaders = new Headers();
-    const cachedHeaders = httpCache.getHeaders(specifier);
+    const cachedHeaders = httpCache.getHeaders(specifier, destination);
     if (cachedHeaders) {
       const etag = cachedHeaders["etag"];
       if (etag != null && etag.length > 0) {
@@ -224,7 +234,7 @@ export class FileFetcher {
     }
     // deno-lint-ignore no-console
     console.error(`${colors.green("Download")} ${specifier.toString()}`);
-    const response = await fetchWithRetries(specifier.toString(), {
+    const response = await fetchWithRetries(specifier.toString(), destination, {
       headers: requestHeaders,
     });
     if (!response.ok) {
@@ -238,7 +248,7 @@ export class FileFetcher {
     // determine if that occurred and cache the value.
     if (specifier.toString() !== response.url) {
       const headers = { "location": response.url };
-      httpCache.set(specifier, headers, new Uint8Array());
+      httpCache.set(specifier, destination, headers, new Uint8Array());
     }
     const url = new URL(response.url);
     const content = new Uint8Array(await response.arrayBuffer());
@@ -246,7 +256,7 @@ export class FileFetcher {
     for (const [key, value] of response.headers) {
       headers[key.toLowerCase()] = value;
     }
-    httpCache.set(url, headers, content);
+    httpCache.set(url, destination, headers, content);
     if (options?.checksum != null) {
       const digest = await crypto.subtle.digest("SHA-256", content);
       const actualChecksum = Array.from(new Uint8Array(digest))
@@ -268,13 +278,14 @@ export class FileFetcher {
 
   async fetch(
     specifier: URL,
+    destination: RequestDestination,
     // Providing a checksum here doesn't make sense because the provided
     // checksum will change based on the specifier being requested, which
     // could be invalided by a redirect
     options?: Omit<FetchOptions, "checksum">,
   ): Promise<LoadResponse | undefined> {
     for (let i = 0; i <= 10; i++) {
-      const response = await this.fetchOnce(specifier, options);
+      const response = await this.fetchOnce(specifier, destination, options);
       if (response?.kind !== "redirect") {
         return response;
       }
@@ -287,6 +298,7 @@ export class FileFetcher {
 
   async fetchOnce(
     specifier: URL,
+    destination: RequestDestination,
     options?: FetchOptions,
   ): Promise<LoadResponse | undefined> {
     const scheme = getValidatedScheme(specifier);
@@ -299,6 +311,7 @@ export class FileFetcher {
     } else if (scheme === "data:" || scheme === "blob:") {
       const response = await this.#fetchBlobDataUrl(
         specifier,
+        destination,
         this.#resolveOptions(options),
         await this.#resolveHttpCache(),
       );
@@ -311,6 +324,7 @@ export class FileFetcher {
     } else {
       const response = await this.#fetchRemoteOnce(
         specifier,
+        destination,
         this.#resolveOptions(options),
         await this.#resolveHttpCache(),
       );
@@ -344,8 +358,27 @@ export class FileFetcher {
 
 export async function fetchWithRetries(
   url: URL | string,
+  destination: RequestDestination,
   init?: { headers?: Headers },
 ) {
+  switch (destination) {
+    case RequestDestination.Json: {
+      init = init ?? {};
+      init.headers = init.headers ?? new Headers();
+      if (!init.headers.has("accept")) {
+        init.headers.set("accept", "application/json");
+      }
+      break;
+    }
+    case RequestDestination.Script: {
+      // ignore
+      break;
+    }
+    default: {
+      const _assertNever: never = destination;
+      break; // ignore
+    }
+  }
   const maxRetries = 3;
   let sleepMs = 250;
   let iterationCount = 0;

@@ -3,6 +3,7 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import { DenoDir } from "./deno_dir.ts";
 import { withTempDir } from "./deps_test.ts";
+import { RequestDestination } from "./http_cache.ts";
 
 Deno.test({
   name: "DenoDir - basic",
@@ -54,10 +55,15 @@ export * from "./glob.ts";
       "content-type": "application/typescript",
     };
     const deps = await denoDir.createHttpCache();
-    deps.set(url, expectedHeaders, new TextEncoder().encode(expectedText));
-    const headers = deps.getHeaders(url)!;
+    deps.set(
+      url,
+      RequestDestination.Script,
+      expectedHeaders,
+      new TextEncoder().encode(expectedText),
+    );
+    const headers = deps.getHeaders(url, RequestDestination.Script)!;
     assertEquals(headers, expectedHeaders);
-    const cacheEntry = deps.get(url)!;
+    const cacheEntry = deps.get(url, RequestDestination.Script)!;
     assertEquals(cacheEntry.headers, expectedHeaders);
     const text = new TextDecoder().decode(cacheEntry.content);
     assertEquals(text, expectedText);
@@ -65,6 +71,7 @@ export * from "./glob.ts";
     // ok
     deps.get(
       url,
+      RequestDestination.Script,
       {
         checksum:
           "d3e68d0abb393fb0bf94a6d07c46ec31dc755b544b13144dee931d8d5f06a52d",
@@ -72,7 +79,7 @@ export * from "./glob.ts";
     );
     // not ok
     assertThrows(() =>
-      deps.get(url, {
+      deps.get(url, RequestDestination.Script, {
         checksum: "invalid",
       })
     );
@@ -87,7 +94,7 @@ Deno.test({
     const deps = await denoDir.createHttpCache();
     // disallow will still work because we're using a global cache
     // which is not affected by this option
-    const entry = await deps.get(url);
+    const entry = await deps.get(url, RequestDestination.Script);
     assertEquals(entry!.content.length, 820);
   },
 });
@@ -105,7 +112,7 @@ Deno.test({
           vendorRoot: tempDir,
           readOnly: true,
         });
-        const text = deps.get(url);
+        const text = deps.get(url, RequestDestination.Script);
         assertEquals(text, undefined);
       }
       // this should be fine though
@@ -113,7 +120,7 @@ Deno.test({
         using deps = await denoDir.createHttpCache({
           vendorRoot: tempDir,
         });
-        const entry = deps.get(url);
+        const entry = deps.get(url, RequestDestination.Script);
         assertEquals(entry!.content.length, 820);
       }
     });

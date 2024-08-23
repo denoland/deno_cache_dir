@@ -8,6 +8,11 @@ import {
   type LocalHttpCache,
 } from "./lib/deno_cache_dir.generated.js";
 
+export enum RequestDestination {
+  Script = 0,
+  Json = 1,
+}
+
 export interface HttpCacheCreateOptions {
   root: string;
   vendorRoot?: string;
@@ -72,17 +77,20 @@ export class HttpCache implements Disposable {
 
   getHeaders(
     url: URL,
+    destination: RequestDestination,
   ): Record<string, string> | undefined {
-    const map = this.#cache.getHeaders(url.toString());
+    const map = this.#cache.getHeaders(url.toString(), destination);
     return map == null ? undefined : Object.fromEntries(map);
   }
 
   get(
     url: URL,
+    destination: RequestDestination,
     options?: HttpCacheGetOptions,
   ): HttpCacheEntry | undefined {
     const data = this.#cache.get(
       url.toString(),
+      destination,
       options?.checksum,
     );
     return data == null ? undefined : data;
@@ -90,6 +98,7 @@ export class HttpCache implements Disposable {
 
   set(
     url: URL,
+    destination: RequestDestination,
     headers: Record<string, string>,
     content: Uint8Array,
   ): void {
@@ -104,6 +113,7 @@ export class HttpCache implements Disposable {
     }
     this.#cache.set(
       url.toString(),
+      destination,
       headers,
       content,
     );

@@ -26,9 +26,10 @@ export function instantiateWithInstance(): InstantiateResult;
 
 /**
 * @param {string} url
+* @param {number} destination
 * @returns {string}
 */
-export function url_to_filename(url: string): string;
+export function url_to_filename(url: string, destination: number): string;
 /**
 */
 export class GlobalHttpCache {
@@ -40,21 +41,24 @@ export class GlobalHttpCache {
   static new(path: string): GlobalHttpCache;
 /**
 * @param {string} url
+* @param {number} destination
 * @returns {any}
 */
-  getHeaders(url: string): any;
+  getHeaders(url: string, destination: number): any;
 /**
 * @param {string} url
+* @param {number} destination
 * @param {string | undefined} [maybe_checksum]
 * @returns {any}
 */
-  get(url: string, maybe_checksum?: string): any;
+  get(url: string, destination: number, maybe_checksum?: string): any;
 /**
 * @param {string} url
+* @param {number} destination
 * @param {any} headers
 * @param {Uint8Array} text
 */
-  set(url: string, headers: any, text: Uint8Array): void;
+  set(url: string, destination: number, headers: any, text: Uint8Array): void;
 }
 /**
 */
@@ -69,19 +73,22 @@ export class LocalHttpCache {
   static new(local_path: string, global_path: string, allow_global_to_local_copy: boolean): LocalHttpCache;
 /**
 * @param {string} url
+* @param {number} destination
 * @returns {any}
 */
-  getHeaders(url: string): any;
+  getHeaders(url: string, destination: number): any;
 /**
 * @param {string} url
+* @param {number} destination
 * @param {string | undefined} [maybe_checksum]
 * @returns {any}
 */
-  get(url: string, maybe_checksum?: string): any;
+  get(url: string, destination: number, maybe_checksum?: string): any;
 /**
 * @param {string} url
+* @param {number} destination
 * @param {any} headers
 * @param {Uint8Array} text
 */
-  set(url: string, headers: any, text: Uint8Array): void;
+  set(url: string, destination: number, headers: any, text: Uint8Array): void;
 }

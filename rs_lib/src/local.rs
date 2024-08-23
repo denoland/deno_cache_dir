@@ -1007,7 +1007,7 @@ mod manifest {
                 return None;
               }
               url_to_local_sub_path(
-                &url,
+                url,
                 destination,
                 module.content_type_header(),
               )
