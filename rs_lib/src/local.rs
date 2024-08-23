@@ -507,16 +507,21 @@ fn url_to_local_sub_path(
     })
   }
 
-  fn has_known_extension(path: &str) -> bool {
-    let path = path.to_lowercase();
-    path.ends_with(".js")
-      || path.ends_with(".ts")
-      || path.ends_with(".jsx")
-      || path.ends_with(".tsx")
-      || path.ends_with(".mts")
-      || path.ends_with(".mjs")
-      || path.ends_with(".json")
-      || path.ends_with(".wasm")
+  fn is_known_extension(ext: Option<&str>) -> bool {
+    matches!(
+      ext,
+      Some(
+        "js" | "ts" | "jsx" | "tsx" | "mts" | "mjs" | "json" | "wasm" | "css"
+      )
+    )
+  }
+
+  fn get_part_ext(part: &str) -> Option<String> {
+    let part = part.split_once('?').map(|(p, _)| p).unwrap_or(part);
+    part
+      .rsplit_once('.')
+      .map(|(_, ext)| ext.to_lowercase())
+      .filter(|ext| !ext.is_empty())
   }
 
   fn get_extension(url: &Url, content_type: Option<&str>) -> &'static str {
@@ -580,14 +585,17 @@ fn url_to_local_sub_path(
       // keep short due to windows path limit
       return true;
     }
+    let maybe_part_ext = get_part_ext(part);
     let hash_context_specific = if let Some(last_ext) = last_ext {
       // if the last part does not have a known extension, hash it in order to
       // prevent collisions with a directory of the same name
-      !has_known_extension(part) || !part.ends_with(last_ext)
+      !is_known_extension(maybe_part_ext.as_deref())
+        || maybe_part_ext.as_deref()
+          != Some(last_ext.strip_prefix('.').unwrap_or(last_ext))
     } else {
       // if any non-ending path part has a known extension, hash it in order to
       // prevent collisions where a filename has the same name as a directory name
-      has_known_extension(part)
+      is_known_extension(maybe_part_ext.as_deref())
     };
 
     // the hash symbol at the start designates a hash for the url part
