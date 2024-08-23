@@ -606,7 +606,8 @@ fn url_to_local_sub_path(
     let Some(last_ext) = last_ext else {
       return false;
     };
-    eprintln!("PART: {} {}", part, last_ext);
+    // get the part without the query
+    let part = part.split_once('?').map(|(p, _)| p).unwrap_or(part);
     match destination {
       HttpCacheItemKeyDestination::Script => {
         !part.ends_with(last_ext) || last_ext == ".json"
@@ -1170,7 +1171,7 @@ mod test {
       "https://deno.land/x/mod.ts?testing=1",
       HttpCacheItemKeyDestination::Script,
       &[],
-      "deno.land/x/#mod_2eb80s.ts",
+      "deno.land/x/#mod_2eb80.ts",
     );
     run_test(
       // capital letter in directory
