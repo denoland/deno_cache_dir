@@ -46,6 +46,7 @@ pub mod wasm {
   use crate::Checksum;
   use crate::DenoCacheEnv;
   use crate::HttpCache;
+use crate::HttpCacheItemKeyDestination;
 
   #[wasm_bindgen(module = "/fs.js")]
   extern "C" {
@@ -106,10 +107,14 @@ pub mod wasm {
   }
 
   #[wasm_bindgen]
-  pub fn url_to_filename(url: &str) -> Result<String, JsValue> {
+  pub fn url_to_filename(url: &str, destination: usize) -> Result<String, JsValue> {
     console_error_panic_hook::set_once();
     let url = parse_url(url).map_err(as_js_error)?;
-    crate::cache::url_to_filename(&url)
+    let destination = parse_destination(destination).map_err(as_js_error)?;
+    crate::cache::url_to_filename(
+      &url,
+      destination,
+    )
       .map(|s| s.to_string_lossy().to_string())
       .map_err(as_js_error)
   }
@@ -128,25 +133,31 @@ pub mod wasm {
     }
 
     #[wasm_bindgen(js_name = getHeaders)]
-    pub fn get_headers(&self, url: &str) -> Result<JsValue, JsValue> {
-      get_headers(&self.cache, url)
+    pub fn get_headers(
+      &self,
+      url: &str,
+      destination: usize,
+    ) -> Result<JsValue, JsValue> {
+      get_headers(&self.cache, url, destination)
     }
 
     pub fn get(
       &self,
       url: &str,
+      destination: usize,
       maybe_checksum: Option<String>,
     ) -> Result<JsValue, JsValue> {
-      get_cache_entry(&self.cache, url, maybe_checksum.as_deref())
+      get_cache_entry(&self.cache, url, destination, maybe_checksum.as_deref())
     }
 
     pub fn set(
       &self,
       url: &str,
+      destination: usize,
       headers: JsValue,
       text: &[u8],
     ) -> Result<(), JsValue> {
-      set(&self.cache, url, headers, text)
+      set(&self.cache, url, destination, headers, text)
     }
   }
 
@@ -178,42 +189,47 @@ pub mod wasm {
     }
 
     #[wasm_bindgen(js_name = getHeaders)]
-    pub fn get_headers(&self, url: &str) -> Result<JsValue, JsValue> {
-      get_headers(&self.cache, url)
+    pub fn get_headers(&self, url: &str, destination: usize) -> Result<JsValue, JsValue> {
+      get_headers(&self.cache, url, destination)
     }
 
     pub fn get(
       &self,
       url: &str,
+      destination: usize,
       maybe_checksum: Option<String>,
     ) -> Result<JsValue, JsValue> {
-      get_cache_entry(&self.cache, url, maybe_checksum.as_deref())
+      get_cache_entry(&self.cache, url, destination, maybe_checksum.as_deref())
     }
 
     pub fn set(
       &self,
       url: &str,
+    destination: usize,
       headers: JsValue,
       text: &[u8],
     ) -> Result<(), JsValue> {
-      set(&self.cache, url, headers, text)
+      set(&self.cache, url, destination, headers, text)
     }
   }
 
   fn get_headers<Cache: HttpCache>(
     cache: &Cache,
     url: &str,
+    destination: usize
   ) -> Result<JsValue, JsValue> {
     fn inner<Cache: HttpCache>(
       cache: &Cache,
       url: &str,
+      destination: usize
     ) -> std::io::Result<Option<HeadersMap>> {
       let url = parse_url(url)?;
-      let key = cache.cache_item_key(&url)?;
+      let destination = parse_destination(destination)?;
+      let key = cache.cache_item_key(&url, destination)?;
       cache.read_headers(&key)
     }
 
-    inner(cache, url)
+    inner(cache, url, destination)
       .map(|headers| match headers {
         Some(headers) => serde_wasm_bindgen::to_value(&headers).unwrap(),
         None => JsValue::undefined(),
@@ -224,15 +240,18 @@ pub mod wasm {
   fn get_cache_entry<Cache: HttpCache>(
     cache: &Cache,
     url: &str,
+    destination: usize,
     maybe_checksum: Option<&str>,
   ) -> Result<JsValue, JsValue> {
     fn inner<Cache: HttpCache>(
       cache: &Cache,
       url: &str,
+      destination: usize,
       maybe_checksum: Option<Checksum>,
     ) -> std::io::Result<Option<CacheEntry>> {
       let url = parse_url(url)?;
-      let key = cache.cache_item_key(&url)?;
+      let destination = parse_destination(destination)?;
+      let key = cache.cache_item_key(&url, destination)?;
       match cache.get(&key, maybe_checksum) {
         Ok(Some(entry)) => Ok(Some(entry)),
         Ok(None) => Ok(None),
@@ -245,7 +264,7 @@ pub mod wasm {
       }
     }
 
-    inner(cache, url, maybe_checksum.map(Checksum::new))
+    inner(cache, url, destination, maybe_checksum.map(Checksum::new))
       .map(|text| match text {
         Some(entry) => {
           let content = {
@@ -279,29 +298,43 @@ pub mod wasm {
   fn set<Cache: HttpCache>(
     cache: &Cache,
     url: &str,
+      destination: usize,
     headers: JsValue,
     content: &[u8],
   ) -> Result<(), JsValue> {
     fn inner<Cache: HttpCache>(
       cache: &Cache,
       url: &str,
+      destination: usize,
       headers: JsValue,
       content: &[u8],
     ) -> std::io::Result<()> {
       let url = parse_url(url)?;
+      let destination = parse_destination(destination)?;
       let headers: HashMap<String, String> =
         serde_wasm_bindgen::from_value(headers).map_err(|err| {
           std::io::Error::new(ErrorKind::InvalidData, err.to_string())
         })?;
-      cache.set(&url, headers, content)
+      cache.set(&url, destination, headers, content)
     }
 
-    inner(cache, url, headers, content).map_err(as_js_error)
+    inner(cache, url, destination, headers, content).map_err(as_js_error)
   }
 
   fn parse_url(url: &str) -> std::io::Result<Url> {
     Url::parse(url)
       .map_err(|e| std::io::Error::new(ErrorKind::InvalidInput, e.to_string()))
+  }
+
+  fn parse_destination(destination: usize) -> std::io::Result<HttpCacheItemKeyDestination> {
+    match destination {
+      0 => Ok(HttpCacheItemKeyDestination::Script),
+      1 => Ok(HttpCacheItemKeyDestination::Json),
+      _ => Err(std::io::Error::new(
+        ErrorKind::InvalidInput,
+        "Invalid destination",
+      )),
+    }
   }
 
   fn as_js_error(e: std::io::Error) -> JsValue {
