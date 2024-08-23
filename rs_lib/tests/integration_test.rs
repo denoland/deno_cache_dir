@@ -7,6 +7,7 @@ use deno_cache_dir::Checksum;
 use deno_cache_dir::GlobalHttpCache;
 use deno_cache_dir::GlobalToLocalCopy;
 use deno_cache_dir::HttpCache;
+use deno_cache_dir::HttpCacheItemKeyDestination;
 use deno_cache_dir::LocalHttpCache;
 use deno_cache_dir::LocalLspHttpCache;
 use deno_cache_dir::TestRealDenoCacheEnv;
@@ -31,9 +32,19 @@ fn test_global_create_cache() {
   let cache = GlobalHttpCache::new(cache_path.clone(), fs);
   assert!(!cache.get_global_cache_location().exists());
   let url = Url::parse("http://example.com/foo/bar.js").unwrap();
-  cache.set(&url, Default::default(), b"hello world").unwrap();
+  cache
+    .set(
+      &url,
+      HttpCacheItemKeyDestination::Script,
+      Default::default(),
+      b"hello world",
+    )
+    .unwrap();
   assert!(cache_path.is_dir());
-  assert!(cache.get_global_cache_filepath(&url).unwrap().is_file());
+  assert!(cache
+    .get_global_cache_filepath(&url, HttpCacheItemKeyDestination::Script)
+    .unwrap()
+    .is_file());
 }
 
 #[test]
@@ -49,8 +60,12 @@ fn test_global_get_set() {
   );
   headers.insert("etag".to_string(), "as5625rqdsfb".to_string());
   let content = b"Hello world";
-  cache.set(&url, headers, content).unwrap();
-  let key = cache.cache_item_key(&url).unwrap();
+  cache
+    .set(&url, HttpCacheItemKeyDestination::Script, headers, content)
+    .unwrap();
+  let key = cache
+    .cache_item_key(&url, HttpCacheItemKeyDestination::Script)
+    .unwrap();
   let content =
     String::from_utf8(cache.get(&key, None).unwrap().unwrap().content).unwrap();
   let headers = cache.read_headers(&key).unwrap().unwrap();
@@ -113,6 +128,7 @@ fn test_local_global_cache() {
     global_cache
       .set(
         &url,
+        HttpCacheItemKeyDestination::Script,
         HashMap::from([(
           "content-type".to_string(),
           "application/typescript".to_string(),
@@ -120,7 +136,9 @@ fn test_local_global_cache() {
         content.as_bytes(),
       )
       .unwrap();
-    let key = local_cache.cache_item_key(&url).unwrap();
+    let key = local_cache
+      .cache_item_key(&url, HttpCacheItemKeyDestination::Script)
+      .unwrap();
     assert_eq!(
       String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().content)
         .unwrap(),
@@ -149,7 +167,9 @@ fn test_local_global_cache() {
 
     // now we should be able to read this file because it's directly mappable to a url
     let url = Url::parse("https://deno.land/main.js").unwrap();
-    let key = local_cache.cache_item_key(&url).unwrap();
+    let key = local_cache
+      .cache_item_key(&url, HttpCacheItemKeyDestination::Script)
+      .unwrap();
     assert_eq!(
       String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().content)
         .unwrap(),
@@ -167,6 +187,7 @@ fn test_local_global_cache() {
     global_cache
       .set(
         &url,
+        HttpCacheItemKeyDestination::Script,
         HashMap::from([(
           "content-type".to_string(),
           "application/javascript".to_string(),
@@ -174,7 +195,9 @@ fn test_local_global_cache() {
         content.as_bytes(),
       )
       .unwrap();
-    let key = local_cache.cache_item_key(&url).unwrap();
+    let key = local_cache
+      .cache_item_key(&url, HttpCacheItemKeyDestination::Script)
+      .unwrap();
     assert_eq!(
       String::from_utf8(local_cache.get(&key, None).unwrap().unwrap().content)
         .unwrap(),
@@ -230,6 +253,7 @@ fn test_local_global_cache() {
     global_cache
       .set(
         &url,
+        HttpCacheItemKeyDestination::Script,
         HashMap::from([
           (
             "content-type".to_string(),
@@ -246,7 +270,9 @@ fn test_local_global_cache() {
       )
       .unwrap();
     let check_output = |local_cache: &LocalHttpCache<_>| {
-      let key = local_cache.cache_item_key(&url).unwrap();
+      let key = local_cache
+        .cache_item_key(&url, HttpCacheItemKeyDestination::Script)
+        .unwrap();
       assert_eq!(
         String::from_utf8(
           local_cache.get(&key, None).unwrap().unwrap().content
@@ -299,9 +325,16 @@ fn test_local_global_cache() {
       let url = Url::parse("https://deno.land/INVALID/Module.ts?dev").unwrap();
       let content = "export const test = 5;";
       global_cache
-        .set(&url, HashMap::new(), content.as_bytes())
+        .set(
+          &url,
+          HttpCacheItemKeyDestination::Script,
+          HashMap::new(),
+          content.as_bytes(),
+        )
         .unwrap();
-      let key = local_cache.cache_item_key(&url).unwrap();
+      let key = local_cache
+        .cache_item_key(&url, HttpCacheItemKeyDestination::Script)
+        .unwrap();
       assert_eq!(
         String::from_utf8(
           local_cache.get(&key, None).unwrap().unwrap().content
@@ -319,9 +352,16 @@ fn test_local_global_cache() {
       let url = Url::parse("https://deno.land/INVALID/module2.ts").unwrap();
       let content = "export const test = 4;";
       global_cache
-        .set(&url, HashMap::new(), content.as_bytes())
+        .set(
+          &url,
+          HttpCacheItemKeyDestination::Script,
+          HashMap::new(),
+          content.as_bytes(),
+        )
         .unwrap();
-      let key = local_cache.cache_item_key(&url).unwrap();
+      let key = local_cache
+        .cache_item_key(&url, HttpCacheItemKeyDestination::Script)
+        .unwrap();
       assert_eq!(
         String::from_utf8(
           local_cache.get(&key, None).unwrap().unwrap().content
@@ -376,11 +416,14 @@ fn test_local_global_cache() {
     global_cache
       .set(
         &url,
+        HttpCacheItemKeyDestination::Script,
         HashMap::from([("location".to_string(), "./x/mod.ts".to_string())]),
         "Redirecting to other url...".as_bytes(),
       )
       .unwrap();
-    let key = local_cache.cache_item_key(&url).unwrap();
+    let key = local_cache
+      .cache_item_key(&url, HttpCacheItemKeyDestination::Script)
+      .unwrap();
     let headers = local_cache.read_headers(&key).unwrap().unwrap();
     assert_eq!(
       headers,
@@ -414,6 +457,7 @@ fn test_local_global_cache() {
   global_cache
     .set(
       &url,
+      HttpCacheItemKeyDestination::Script,
       HashMap::from([(
         "content-type".to_string(),
         "application/typescript".to_string(),
@@ -421,7 +465,9 @@ fn test_local_global_cache() {
       content.as_bytes(),
     )
     .unwrap();
-  let key = local_cache.cache_item_key(&url).unwrap();
+  let key = local_cache
+    .cache_item_key(&url, HttpCacheItemKeyDestination::Script)
+    .unwrap();
   // reading with a checksum that doesn't match
   // (ensure it doesn't match twice so we know it wasn't copied to the local cache)
   for _ in 0..2 {
@@ -487,6 +533,7 @@ fn test_lsp_local_cache() {
     global_cache
       .set(
         &url,
+        HttpCacheItemKeyDestination::Script,
         HashMap::from([(
           "content-type".to_string(),
           "application/typescript".to_string(),
@@ -497,12 +544,16 @@ fn test_lsp_local_cache() {
     // will be None because it's readonly
     {
       let readonly_local_cache = create_readonly_cache();
-      let key = readonly_local_cache.cache_item_key(&url).unwrap();
+      let key = readonly_local_cache
+        .cache_item_key(&url, HttpCacheItemKeyDestination::Script)
+        .unwrap();
       assert_eq!(readonly_local_cache.get(&key, None).unwrap(), None);
     }
     // populate it with the non-readonly local cache
     {
-      let key = local_cache.cache_item_key(&url).unwrap();
+      let key = local_cache
+        .cache_item_key(&url, HttpCacheItemKeyDestination::Script)
+        .unwrap();
       assert_eq!(
         String::from_utf8(
           local_cache.get(&key, None).unwrap().unwrap().content
@@ -514,7 +565,9 @@ fn test_lsp_local_cache() {
     // now the readonly cache will have it
     {
       let readonly_local_cache = create_readonly_cache();
-      let key = readonly_local_cache.cache_item_key(&url).unwrap();
+      let key = readonly_local_cache
+        .cache_item_key(&url, HttpCacheItemKeyDestination::Script)
+        .unwrap();
       assert_eq!(
         String::from_utf8(
           readonly_local_cache
@@ -531,7 +584,8 @@ fn test_lsp_local_cache() {
     {
       // check getting the file url works
       let readonly_local_cache = create_readonly_cache();
-      let file_url = readonly_local_cache.get_file_url(&url);
+      let file_url = readonly_local_cache
+        .get_file_url(&url, HttpCacheItemKeyDestination::Script);
       let expected = Url::from_directory_path(&local_cache_path)
         .unwrap()
         .join("deno.land/x/mod.ts")
@@ -558,6 +612,7 @@ fn test_lsp_local_cache() {
     global_cache
       .set(
         &url,
+        HttpCacheItemKeyDestination::Script,
         HashMap::from([(
           "content-type".to_string(),
           "application/javascript".to_string(),
@@ -567,7 +622,9 @@ fn test_lsp_local_cache() {
       .unwrap();
     // populate it with the non-readonly local cache
     {
-      let key = local_cache.cache_item_key(&url).unwrap();
+      let key = local_cache
+        .cache_item_key(&url, HttpCacheItemKeyDestination::Script)
+        .unwrap();
       assert_eq!(
         String::from_utf8(
           local_cache.get(&key, None).unwrap().unwrap().content
@@ -578,7 +635,9 @@ fn test_lsp_local_cache() {
     }
     {
       let readonly_local_cache = create_readonly_cache();
-      let key = readonly_local_cache.cache_item_key(&url).unwrap();
+      let key = readonly_local_cache
+        .cache_item_key(&url, HttpCacheItemKeyDestination::Script)
+        .unwrap();
       assert_eq!(
         String::from_utf8(
           readonly_local_cache
@@ -591,7 +650,9 @@ fn test_lsp_local_cache() {
         content
       );
 
-      let file_url = readonly_local_cache.get_file_url(&url).unwrap();
+      let file_url = readonly_local_cache
+        .get_file_url(&url, HttpCacheItemKeyDestination::Script)
+        .unwrap();
       let path = file_url.to_file_path().unwrap();
       assert!(path.exists());
       let mapping = readonly_local_cache.get_remote_url(&path);
@@ -609,11 +670,18 @@ fn test_lsp_local_cache() {
       let url = Url::parse(url).unwrap();
       let content = "export const test = 5;";
       global_cache
-        .set(&url, HashMap::new(), content.as_bytes())
+        .set(
+          &url,
+          HttpCacheItemKeyDestination::Script,
+          HashMap::new(),
+          content.as_bytes(),
+        )
         .unwrap();
       // populate it with the non-readonly local cache
       {
-        let key = local_cache.cache_item_key(&url).unwrap();
+        let key = local_cache
+          .cache_item_key(&url, HttpCacheItemKeyDestination::Script)
+          .unwrap();
         assert_eq!(
           String::from_utf8(
             local_cache.get(&key, None).unwrap().unwrap().content
@@ -624,7 +692,9 @@ fn test_lsp_local_cache() {
       }
       {
         let readonly_local_cache = create_readonly_cache();
-        let key = readonly_local_cache.cache_item_key(&url).unwrap();
+        let key = readonly_local_cache
+          .cache_item_key(&url, HttpCacheItemKeyDestination::Script)
+          .unwrap();
         assert_eq!(
           String::from_utf8(
             readonly_local_cache
@@ -637,7 +707,9 @@ fn test_lsp_local_cache() {
           content
         );
 
-        let file_url = readonly_local_cache.get_file_url(&url).unwrap();
+        let file_url = readonly_local_cache
+          .get_file_url(&url, HttpCacheItemKeyDestination::Script)
+          .unwrap();
         let path = file_url.to_file_path().unwrap();
         assert!(path.exists());
         let mapping = readonly_local_cache.get_remote_url(&path);
@@ -655,11 +727,18 @@ fn test_lsp_local_cache() {
       let url = Url::parse(url).unwrap();
       let content = "export const test = 4;";
       global_cache
-        .set(&url, HashMap::new(), content.as_bytes())
+        .set(
+          &url,
+          HttpCacheItemKeyDestination::Script,
+          HashMap::new(),
+          content.as_bytes(),
+        )
         .unwrap();
       // populate it with the non-readonly local cache
       {
-        let key = local_cache.cache_item_key(&url).unwrap();
+        let key = local_cache
+          .cache_item_key(&url, HttpCacheItemKeyDestination::Script)
+          .unwrap();
         assert_eq!(
           String::from_utf8(
             local_cache.get(&key, None).unwrap().unwrap().content
@@ -670,7 +749,9 @@ fn test_lsp_local_cache() {
       }
       {
         let readonly_local_cache = create_readonly_cache();
-        let key = readonly_local_cache.cache_item_key(&url).unwrap();
+        let key = readonly_local_cache
+          .cache_item_key(&url, HttpCacheItemKeyDestination::Script)
+          .unwrap();
         assert_eq!(
           String::from_utf8(
             readonly_local_cache
@@ -682,7 +763,9 @@ fn test_lsp_local_cache() {
           .unwrap(),
           content
         );
-        let file_url = readonly_local_cache.get_file_url(&url).unwrap();
+        let file_url = readonly_local_cache
+          .get_file_url(&url, HttpCacheItemKeyDestination::Script)
+          .unwrap();
         let path = file_url.to_file_path().unwrap();
         assert!(path.exists());
         let mapping = readonly_local_cache.get_remote_url(&path);
@@ -691,7 +774,9 @@ fn test_lsp_local_cache() {
 
       // ensure we can still get this file with a new local cache
       let local_cache = create_readonly_cache();
-      let file_url = local_cache.get_file_url(&url).unwrap();
+      let file_url = local_cache
+        .get_file_url(&url, HttpCacheItemKeyDestination::Script)
+        .unwrap();
       let path = file_url.to_file_path().unwrap();
       assert!(path.exists());
       let mapping = local_cache.get_remote_url(&path);

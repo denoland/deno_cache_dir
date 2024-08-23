@@ -9,7 +9,6 @@ use thiserror::Error;
 use url::Url;
 
 use crate::common::base_url_to_filename_parts;
-use crate::common::checksum;
 use crate::common::HeadersMap;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -57,7 +56,27 @@ impl<'a> Checksum<'a> {
 /// in filenames (like "?", "#", ":"), so in order to cache
 /// them properly they are deterministically hashed into ASCII
 /// strings.
-pub fn url_to_filename(url: &Url) -> std::io::Result<PathBuf> {
+pub fn url_to_filename(
+  url: &Url,
+  destination: HttpCacheItemKeyDestination,
+) -> std::io::Result<PathBuf> {
+  fn checksum(v: &[u8], destination: HttpCacheItemKeyDestination) -> String {
+    use sha2::Digest;
+    use sha2::Sha256;
+
+    let mut hasher = Sha256::new();
+    hasher.update(v);
+    match destination {
+      HttpCacheItemKeyDestination::Script => {
+        // do nothing
+      }
+      HttpCacheItemKeyDestination::Json => {
+        hasher.update(b"json");
+      }
+    }
+    format!("{:x}", hasher.finalize())
+  }
+
   let Some(mut cache_filename) = base_url_to_filename(url) else {
     return Err(std::io::Error::new(
       ErrorKind::InvalidInput,
@@ -73,7 +92,7 @@ pub fn url_to_filename(url: &Url) -> std::io::Result<PathBuf> {
   // NOTE: fragment is omitted on purpose - it's not taken into
   // account when caching - it denotes parts of webpage, which
   // in case of static resources doesn't make much sense
-  let hashed_filename = checksum(rest_str.as_bytes());
+  let hashed_filename = checksum(rest_str.as_bytes(), destination);
   cache_filename.push(hashed_filename);
   Ok(cache_filename)
 }
@@ -115,6 +134,13 @@ pub struct CacheEntry {
   pub content: Vec<u8>,
 }
 
+/// The request destination: https://fetch.spec.whatwg.org/#concept-request-destination
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum HttpCacheItemKeyDestination {
+  Script,
+  Json,
+}
+
 /// Computed cache key, which can help reduce the work of computing the cache key multiple times.
 pub struct HttpCacheItemKey<'a> {
   // The key is specific to the implementation of HttpCache,
@@ -124,6 +150,7 @@ pub struct HttpCacheItemKey<'a> {
   #[cfg(debug_assertions)]
   pub(super) is_local_key: bool,
   pub(super) url: &'a Url,
+  pub(super) destination: HttpCacheItemKeyDestination,
   /// This will be set all the time for the global cache, but it
   /// won't ever be set for the local cache because that also needs
   /// header information to determine the final path.
@@ -135,12 +162,18 @@ pub trait HttpCache: Send + Sync + std::fmt::Debug {
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
+    destination: HttpCacheItemKeyDestination,
   ) -> std::io::Result<HttpCacheItemKey<'a>>;
 
-  fn contains(&self, url: &Url) -> bool;
+  fn contains(
+    &self,
+    url: &Url,
+    destination: HttpCacheItemKeyDestination,
+  ) -> bool;
   fn set(
     &self,
     url: &Url,
+    destination: HttpCacheItemKeyDestination,
     headers: HeadersMap,
     content: &[u8],
   ) -> std::io::Result<()>;

@@ -14,6 +14,7 @@ pub use cache::ChecksumIntegrityError;
 pub use cache::GlobalToLocalCopy;
 pub use cache::HttpCache;
 pub use cache::HttpCacheItemKey;
+pub use cache::HttpCacheItemKeyDestination;
 pub use cache::SerializedCachedUrlMetadata;
 pub use env::DenoCacheEnv;
 pub use global::GlobalHttpCache;
