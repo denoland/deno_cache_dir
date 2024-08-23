@@ -237,13 +237,13 @@ mod test {
     run_test(
       "https://deno.land/data.json",
        HttpCacheItemKeyDestination::Json,
-      "https\\deno.land\\ca2c34679b71e39cd6c440a4fa4e7e3add3c96040571a12b34a8683eff28e410",
+      "https/deno.land/ca2c34679b71e39cd6c440a4fa4e7e3add3c96040571a12b34a8683eff28e410",
     );
     run_test(
       "https://deno.land/data.json",
       // now try with script
       HttpCacheItemKeyDestination::Script,
-      "https\\deno.land\\1d010d39e2f8999e7b9c0abef8f1f92b572fa5868b8819355a8f489190f0d23b",
+      "https/deno.land/1d010d39e2f8999e7b9c0abef8f1f92b572fa5868b8819355a8f489190f0d23b",
     );
     run_test(
       "data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=",
