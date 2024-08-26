@@ -681,7 +681,7 @@ fn url_to_local_sub_path<'a>(
       };
       if should_hash_part(&part, destination, last_ext) {
         has_hash = true;
-        short_hash(&part, destination, last_ext)
+        Cow::Owned(short_hash(&part, destination, last_ext))
       } else {
         part
       }
