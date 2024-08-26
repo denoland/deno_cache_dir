@@ -70,7 +70,8 @@ pub fn url_to_filename(url: &Url) -> std::io::Result<PathBuf> {
   };
 
   let rest_str = if let Some(query) = url.query() {
-    let mut rest_str = String::with_capacity(url.path().len() + 1 + query.len());
+    let mut rest_str =
+      String::with_capacity(url.path().len() + 1 + query.len());
     rest_str.push_str(url.path());
     rest_str.push('?');
     rest_str.push_str(query);
@@ -83,7 +84,9 @@ pub fn url_to_filename(url: &Url) -> std::io::Result<PathBuf> {
   // account when caching - it denotes parts of webpage, which
   // in case of static resources doesn't make much sense
   let hashed_filename = checksum(rest_str.as_bytes());
-  let capacity = cache_parts.iter().map(|s| s.len() + 1).sum::<usize>() + 1 + hashed_filename.len();
+  let capacity = cache_parts.iter().map(|s| s.len() + 1).sum::<usize>()
+    + 1
+    + hashed_filename.len();
   let mut cache_filename = PathBuf::with_capacity(capacity);
   cache_filename.extend(cache_parts.iter().map(|s| s.as_ref()));
   cache_filename.push(hashed_filename);

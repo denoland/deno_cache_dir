@@ -424,7 +424,8 @@ impl<'a> LocalCacheSubPath<'a> {
   }
 
   pub fn as_relative_path(&self) -> PathBuf {
-    let mut path = PathBuf::with_capacity(self.parts.iter().map(|p| p.len() + 1).sum());
+    let mut path =
+      PathBuf::with_capacity(self.parts.iter().map(|p| p.len() + 1).sum());
     for part in &self.parts {
       path.push(part.as_ref());
     }
@@ -573,9 +574,7 @@ fn url_to_local_sub_path<'a>(
           Cow::Owned(ref mut s) => s,
         }
       }
-      Cow::Owned(last_part) => {
-        last_part
-      }
+      Cow::Owned(last_part) => last_part,
     };
     last_part.push('?');
     last_part.push_str(query);

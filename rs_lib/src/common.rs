@@ -29,7 +29,7 @@ pub fn base_url_to_filename_parts<'a>(
     }
     "data" | "blob" => {
       out.push(Cow::Borrowed(scheme));
-    },
+    }
     scheme => {
       log::debug!("Don't know how to create cache name for scheme: {}", scheme);
       return None;
