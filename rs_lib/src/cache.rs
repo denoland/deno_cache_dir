@@ -103,7 +103,9 @@ pub enum CacheReadFileError {
 pub struct SerializedCachedUrlMetadata {
   pub headers: HeadersMap,
   pub url: String,
-  pub time: Option<SystemTime>,
+  /// Number of seconds since the UNIX epoch.
+  #[serde(default)]
+  pub time: Option<u64>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -167,7 +169,7 @@ mod test {
   use super::*;
 
   #[test]
-  fn deserialized_no_now() {
+  fn deserialized_no_time() {
     let json = r#"{
       "headers": {
         "content-type": "application/javascript"
@@ -186,5 +188,26 @@ mod test {
         url: "https://deno.land/std/http/file_server.ts".to_string(),
       }
     );
+  }
+
+  #[test]
+  fn serialize_deserialize_time() {
+    let json = r#"{
+      "headers": {
+        "content-type": "application/javascript"
+      },
+      "url": "https://deno.land/std/http/file_server.ts",
+      "time": 123456789
+    }"#;
+    let data: SerializedCachedUrlMetadata = serde_json::from_str(json).unwrap();
+    let expected = SerializedCachedUrlMetadata {
+      headers: HeadersMap::from([(
+        "content-type".to_string(),
+        "application/javascript".to_string(),
+      )]),
+      time: Some(123456789),
+      url: "https://deno.land/std/http/file_server.ts".to_string(),
+    };
+    assert_eq!(data, expected);
   }
 }

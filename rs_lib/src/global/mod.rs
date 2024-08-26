@@ -1,7 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::path::PathBuf;
+use std::time::Duration;
 use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use serde::Deserialize;
 use url::Url;
@@ -99,7 +101,14 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
       &cache_filepath,
       content,
       &SerializedCachedUrlMetadata {
-        time: Some(self.env.time_now()),
+        time: Some(
+          self
+            .env
+            .time_now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+        ),
         url: url.to_string(),
         headers,
       },
@@ -164,7 +173,7 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
     // targeted deserialize
     #[derive(Deserialize)]
     struct SerializedTime {
-      pub time: Option<SystemTime>,
+      pub time: Option<u64>,
     }
 
     #[cfg(debug_assertions)]
@@ -173,7 +182,9 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
       &self.env,
       self.key_file_path(key),
     )?;
-    Ok(maybe_metadata.and_then(|m| m.time))
+    Ok(maybe_metadata.and_then(|m| {
+      Some(SystemTime::UNIX_EPOCH + Duration::from_secs(m.time?))
+    }))
   }
 }
 
