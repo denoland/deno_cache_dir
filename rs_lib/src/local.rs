@@ -14,8 +14,10 @@ use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use url::Url;
 
+use crate::cache::CacheEntry;
 use crate::cache::CacheReadFileError;
 use crate::cache::GlobalToLocalCopy;
+use crate::SerializedCachedUrlMetadata;
 
 use super::common::base_url_to_filename_parts;
 use super::common::checksum;
@@ -46,6 +48,14 @@ impl<Env: DenoCacheEnv> LocalLspHttpCache<Env> {
         path,
         manifest,
         global_cache,
+        // In the LSP, we disallow the cache from automatically copying from
+        // the global cache to the local cache for technical reasons.
+        //
+        // 1. We need to verify the checksums from the lockfile are correct when
+        //    moving from the global to the local cache.
+        // 2. We need to verify the checksums for JSR https specifiers match what
+        //    is found in the package's manifest.
+        allow_global_to_local: GlobalToLocalCopy::Disallow,
       },
     }
   }
@@ -154,22 +164,19 @@ impl<Env: DenoCacheEnv> HttpCache for LocalLspHttpCache<Env> {
     self.cache.set(url, headers, content)
   }
 
+  fn get(
+    &self,
+    key: &HttpCacheItemKey,
+    maybe_checksum: Option<Checksum>,
+  ) -> Result<Option<crate::cache::CacheEntry>, CacheReadFileError> {
+    self.cache.get(key, maybe_checksum)
+  }
+
   fn read_modified_time(
     &self,
     key: &HttpCacheItemKey,
   ) -> std::io::Result<Option<SystemTime>> {
     self.cache.read_modified_time(key)
-  }
-
-  fn read_file_bytes(
-    &self,
-    key: &HttpCacheItemKey,
-    maybe_checksum: Option<Checksum>,
-    allow_global_to_local: GlobalToLocalCopy,
-  ) -> Result<Option<Vec<u8>>, CacheReadFileError> {
-    self
-      .cache
-      .read_file_bytes(key, maybe_checksum, allow_global_to_local)
   }
 
   fn read_headers(
@@ -192,10 +199,15 @@ pub struct LocalHttpCache<Env: DenoCacheEnv> {
   path: PathBuf,
   manifest: LocalCacheManifest<Env>,
   global_cache: Arc<GlobalHttpCache<Env>>,
+  allow_global_to_local: GlobalToLocalCopy,
 }
 
 impl<Env: DenoCacheEnv> LocalHttpCache<Env> {
-  pub fn new(path: PathBuf, global_cache: Arc<GlobalHttpCache<Env>>) -> Self {
+  pub fn new(
+    path: PathBuf,
+    global_cache: Arc<GlobalHttpCache<Env>>,
+    allow_global_to_local: GlobalToLocalCopy,
+  ) -> Self {
     #[cfg(not(feature = "wasm"))]
     assert!(path.is_absolute());
     let manifest = LocalCacheManifest::new(
@@ -206,6 +218,7 @@ impl<Env: DenoCacheEnv> LocalHttpCache<Env> {
       path,
       manifest,
       global_cache,
+      allow_global_to_local,
     }
   }
 
@@ -219,17 +232,21 @@ impl<Env: DenoCacheEnv> LocalHttpCache<Env> {
       return Ok(Some(metadata));
     }
 
+    // if the local path exists, don't copy the headers from the global cache
+    // to the local
+    let local_path = url_to_local_sub_path(url, None)?;
+    if self.fs().is_file(&local_path.as_path_from_root(&self.path)) {
+      return Ok(Some(Default::default()));
+    }
+
+    if !self.allow_global_to_local.is_true() {
+      return Ok(None);
+    }
+
     // not found locally, so try to copy from the global manifest
     let global_key = self.global_cache.cache_item_key(url)?;
     let Some(headers) = self.global_cache.read_headers(&global_key)? else {
-      // the user might have deleted their global cache, so check
-      // the local one for this URL with no headers
-      let local_path = url_to_local_sub_path(url, None)?;
-      if self.fs().is_file(&local_path.as_path_from_root(&self.path)) {
-        return Ok(Some(Default::default()));
-      } else {
-        return Ok(None);
-      }
+      return Ok(None);
     };
 
     let local_path =
@@ -311,12 +328,11 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
     Ok(())
   }
 
-  fn read_file_bytes(
+  fn get(
     &self,
     key: &HttpCacheItemKey,
     maybe_checksum: Option<Checksum>,
-    allow_global_to_local: GlobalToLocalCopy,
-  ) -> Result<Option<Vec<u8>>, CacheReadFileError> {
+  ) -> Result<Option<CacheEntry>, CacheReadFileError> {
     #[cfg(debug_assertions)]
     debug_assert!(key.is_local_key);
 
@@ -324,36 +340,47 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
     match maybe_headers {
       Some(headers) => {
         let is_redirect = headers.contains_key("location");
-        if is_redirect {
+        let bytes = if is_redirect {
           // return back an empty file for redirect
-          Ok(Some(Vec::new()))
+          Vec::new()
         } else {
           // if it's not a redirect, then it should have a file path
           let local_file_path =
             url_to_local_sub_path(key.url, headers_content_type(&headers))?
               .as_path_from_root(&self.path);
-          let maybe_file_bytes = self.fs().read_file_bytes(&local_file_path)?;
-          match maybe_file_bytes {
-            Some(bytes) => Ok(Some(bytes)),
-            None => {
-              if allow_global_to_local.is_true() {
+          let file_bytes_result = self.fs().read_file_bytes(&local_file_path);
+          match file_bytes_result {
+            Ok(bytes) => bytes,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+              if self.allow_global_to_local.is_true() {
                 // only check the checksum when copying from the global to the local cache
                 let global_key = self.global_cache.cache_item_key(key.url)?;
-                let maybe_file_bytes = self.global_cache.read_file_bytes(
-                  &global_key,
-                  maybe_checksum,
-                  allow_global_to_local,
-                )?;
-                if let Some(bytes) = &maybe_file_bytes {
-                  self.fs().atomic_write_file(&local_file_path, bytes)?;
+                let maybe_global_cache_file =
+                  self.global_cache.get(&global_key, maybe_checksum)?;
+                if let Some(file) = maybe_global_cache_file {
+                  self
+                    .fs()
+                    .atomic_write_file(&local_file_path, &file.content)?;
+                  file.content
+                } else {
+                  return Ok(None);
                 }
-                Ok(maybe_file_bytes)
               } else {
-                Ok(None)
+                return Ok(None);
               }
             }
+            Err(err) => return Err(CacheReadFileError::Io(err)),
           }
-        }
+        };
+        Ok(Some(CacheEntry {
+          metadata: SerializedCachedUrlMetadata {
+            headers,
+            url: key.url.to_string(),
+            // not used for the local cache
+            time: None,
+          },
+          content: bytes,
+        }))
       }
       None => Ok(None),
     }
@@ -589,7 +616,6 @@ impl<Env: DenoCacheEnv> LocalCacheManifest<Env> {
     let text = env
       .read_file_bytes(&file_path)
       .ok()
-      .flatten()
       .and_then(|bytes| String::from_utf8(bytes).ok());
     Self {
       env,

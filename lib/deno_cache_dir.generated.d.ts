@@ -45,11 +45,10 @@ export class GlobalHttpCache {
   getHeaders(url: string): any;
 /**
 * @param {string} url
-* @param {string | undefined} maybe_checksum
-* @param {boolean} allow_global_to_local_copy
+* @param {string | undefined} [maybe_checksum]
 * @returns {any}
 */
-  getFileBytes(url: string, maybe_checksum: string | undefined, allow_global_to_local_copy: boolean): any;
+  get(url: string, maybe_checksum?: string): any;
 /**
 * @param {string} url
 * @param {any} headers
@@ -64,9 +63,10 @@ export class LocalHttpCache {
 /**
 * @param {string} local_path
 * @param {string} global_path
+* @param {boolean} allow_global_to_local_copy
 * @returns {LocalHttpCache}
 */
-  static new(local_path: string, global_path: string): LocalHttpCache;
+  static new(local_path: string, global_path: string, allow_global_to_local_copy: boolean): LocalHttpCache;
 /**
 * @param {string} url
 * @returns {any}
@@ -74,11 +74,10 @@ export class LocalHttpCache {
   getHeaders(url: string): any;
 /**
 * @param {string} url
-* @param {string | undefined} maybe_checksum
-* @param {boolean} allow_global_to_local_copy
+* @param {string | undefined} [maybe_checksum]
 * @returns {any}
 */
-  getFileBytes(url: string, maybe_checksum: string | undefined, allow_global_to_local_copy: boolean): any;
+  get(url: string, maybe_checksum?: string): any;
 /**
 * @param {string} url
 * @param {any} headers

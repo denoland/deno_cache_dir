@@ -2,10 +2,12 @@
 
 mod cache;
 mod common;
+mod env;
 mod global;
 mod local;
 
 pub use cache::url_to_filename;
+pub use cache::CacheEntry;
 pub use cache::CacheReadFileError;
 pub use cache::Checksum;
 pub use cache::ChecksumIntegrityError;
@@ -13,10 +15,13 @@ pub use cache::GlobalToLocalCopy;
 pub use cache::HttpCache;
 pub use cache::HttpCacheItemKey;
 pub use cache::SerializedCachedUrlMetadata;
-pub use common::DenoCacheEnv;
+pub use env::DenoCacheEnv;
 pub use global::GlobalHttpCache;
 pub use local::LocalHttpCache;
 pub use local::LocalLspHttpCache;
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub use env::TestRealDenoCacheEnv;
 
 #[cfg(feature = "wasm")]
 pub mod wasm {
@@ -27,10 +32,13 @@ pub mod wasm {
   use std::sync::Arc;
   use std::time::SystemTime;
 
+  use js_sys::Object;
+  use js_sys::Reflect;
   use js_sys::Uint8Array;
   use url::Url;
   use wasm_bindgen::prelude::*;
 
+  use crate::cache::CacheEntry;
   use crate::cache::GlobalToLocalCopy;
   use crate::common::HeadersMap;
   use crate::CacheReadFileError;
@@ -54,13 +62,13 @@ pub mod wasm {
   struct WasmEnv;
 
   impl DenoCacheEnv for WasmEnv {
-    fn read_file_bytes(&self, path: &Path) -> std::io::Result<Option<Vec<u8>>> {
+    fn read_file_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>> {
       let js_value =
         read_file_bytes(&path.to_string_lossy()).map_err(js_to_io_error)?;
       if js_value.is_null() || js_value.is_undefined() {
-        Ok(None)
+        Err(std::io::Error::new(ErrorKind::NotFound, ""))
       } else {
-        Ok(Some(js_sys::Uint8Array::from(js_value).to_vec()))
+        Ok(js_sys::Uint8Array::from(js_value).to_vec())
       }
     }
 
@@ -102,7 +110,7 @@ pub mod wasm {
     let url = parse_url(url).map_err(as_js_error)?;
     crate::cache::url_to_filename(&url)
       .map(|s| s.to_string_lossy().to_string())
-      .map_err(|e| as_js_error(e.into()))
+      .map_err(as_js_error)
   }
 
   #[wasm_bindgen]
@@ -123,19 +131,12 @@ pub mod wasm {
       get_headers(&self.cache, url)
     }
 
-    #[wasm_bindgen(js_name = getFileBytes)]
-    pub fn get_file_bytes(
+    pub fn get(
       &self,
       url: &str,
       maybe_checksum: Option<String>,
-      allow_global_to_local_copy: bool,
     ) -> Result<JsValue, JsValue> {
-      get_file_bytes(
-        &self.cache,
-        url,
-        maybe_checksum.as_deref(),
-        allow_global_to_local_copy,
-      )
+      get_cache_entry(&self.cache, url, maybe_checksum.as_deref())
     }
 
     pub fn set(
@@ -155,12 +156,23 @@ pub mod wasm {
 
   #[wasm_bindgen]
   impl LocalHttpCache {
-    pub fn new(local_path: &str, global_path: &str) -> Self {
+    pub fn new(
+      local_path: &str,
+      global_path: &str,
+      allow_global_to_local_copy: bool,
+    ) -> Self {
       console_error_panic_hook::set_once();
       let global =
         crate::GlobalHttpCache::new(PathBuf::from(global_path), WasmEnv);
-      let local =
-        crate::LocalHttpCache::new(PathBuf::from(local_path), Arc::new(global));
+      let local = crate::LocalHttpCache::new(
+        PathBuf::from(local_path),
+        Arc::new(global),
+        if allow_global_to_local_copy {
+          GlobalToLocalCopy::Allow
+        } else {
+          GlobalToLocalCopy::Disallow
+        },
+      );
       Self { cache: local }
     }
 
@@ -169,19 +181,12 @@ pub mod wasm {
       get_headers(&self.cache, url)
     }
 
-    #[wasm_bindgen(js_name = getFileBytes)]
-    pub fn get_file_bytes(
+    pub fn get(
       &self,
       url: &str,
       maybe_checksum: Option<String>,
-      allow_global_to_local_copy: bool,
     ) -> Result<JsValue, JsValue> {
-      get_file_bytes(
-        &self.cache,
-        url,
-        maybe_checksum.as_deref(),
-        allow_global_to_local_copy,
-      )
+      get_cache_entry(&self.cache, url, maybe_checksum.as_deref())
     }
 
     pub fn set(
@@ -215,22 +220,20 @@ pub mod wasm {
       .map_err(as_js_error)
   }
 
-  fn get_file_bytes<Cache: HttpCache>(
+  fn get_cache_entry<Cache: HttpCache>(
     cache: &Cache,
     url: &str,
     maybe_checksum: Option<&str>,
-    allow_global_to_local_copy: bool,
   ) -> Result<JsValue, JsValue> {
     fn inner<Cache: HttpCache>(
       cache: &Cache,
       url: &str,
       maybe_checksum: Option<Checksum>,
-      allow_global_to_local: GlobalToLocalCopy,
-    ) -> std::io::Result<Option<Vec<u8>>> {
+    ) -> std::io::Result<Option<CacheEntry>> {
       let url = parse_url(url)?;
       let key = cache.cache_item_key(&url)?;
-      match cache.read_file_bytes(&key, maybe_checksum, allow_global_to_local) {
-        Ok(Some(bytes)) => Ok(Some(bytes)),
+      match cache.get(&key, maybe_checksum) {
+        Ok(Some(entry)) => Ok(Some(entry)),
         Ok(None) => Ok(None),
         Err(err) => match err {
           CacheReadFileError::Io(err) => Err(err),
@@ -241,26 +244,35 @@ pub mod wasm {
       }
     }
 
-    let allow_global_to_local = if allow_global_to_local_copy {
-      GlobalToLocalCopy::Allow
-    } else {
-      GlobalToLocalCopy::Disallow
-    };
-    inner(
-      cache,
-      url,
-      maybe_checksum.map(Checksum::new),
-      allow_global_to_local,
-    )
-    .map(|text| match text {
-      Some(bytes) => {
-        let array = Uint8Array::new_with_length(bytes.len() as u32);
-        array.copy_from(&bytes);
-        JsValue::from(array)
-      }
-      None => JsValue::undefined(),
-    })
-    .map_err(as_js_error)
+    inner(cache, url, maybe_checksum.map(Checksum::new))
+      .map(|text| match text {
+        Some(entry) => {
+          let content = {
+            let array = Uint8Array::new_with_length(entry.content.len() as u32);
+            array.copy_from(&entry.content);
+            JsValue::from(array)
+          };
+          let headers: JsValue = {
+            // make it an object instead of a Map
+            let headers_object = Object::new();
+            for (key, value) in &entry.metadata.headers {
+              Reflect::set(
+                &headers_object,
+                &JsValue::from_str(key),
+                &JsValue::from_str(value),
+              )
+              .unwrap();
+            }
+            JsValue::from(headers_object)
+          };
+          let obj = Object::new();
+          Reflect::set(&obj, &JsValue::from_str("content"), &content).unwrap();
+          Reflect::set(&obj, &JsValue::from_str("headers"), &headers).unwrap();
+          JsValue::from(obj)
+        }
+        None => JsValue::undefined(),
+      })
+      .map_err(as_js_error)
   }
 
   fn set<Cache: HttpCache>(

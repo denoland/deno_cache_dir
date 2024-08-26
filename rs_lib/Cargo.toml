@@ -7,7 +7,7 @@ description = "Cache directory logic used in Deno"
 repository = "https://github.com/denoland/deno_cache"
 
 [lib]
-crate_type = ["cdylib", "lib"]
+crate-type = ["cdylib", "lib"]
 
 [features]
 wasm = ["console_error_panic_hook", "js-sys", "serde-wasm-bindgen", "wasm-bindgen"]

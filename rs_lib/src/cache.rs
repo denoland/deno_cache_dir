@@ -104,8 +104,15 @@ pub enum CacheReadFileError {
 pub struct SerializedCachedUrlMetadata {
   pub headers: HeadersMap,
   pub url: String,
-  #[serde(rename = "now")]
-  pub time: Option<SystemTime>,
+  /// Number of seconds since the UNIX epoch.
+  #[serde(default)]
+  pub time: Option<u64>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct CacheEntry {
+  pub metadata: SerializedCachedUrlMetadata,
+  pub content: Vec<u8>,
 }
 
 /// Computed cache key, which can help reduce the work of computing the cache key multiple times.
@@ -137,16 +144,15 @@ pub trait HttpCache: Send + Sync + std::fmt::Debug {
     headers: HeadersMap,
     content: &[u8],
   ) -> std::io::Result<()>;
+  fn get(
+    &self,
+    key: &HttpCacheItemKey,
+    maybe_checksum: Option<Checksum>,
+  ) -> Result<Option<CacheEntry>, CacheReadFileError>;
   fn read_modified_time(
     &self,
     key: &HttpCacheItemKey,
   ) -> std::io::Result<Option<SystemTime>>;
-  fn read_file_bytes(
-    &self,
-    key: &HttpCacheItemKey,
-    maybe_checksum: Option<Checksum>,
-    allow_global_to_local: GlobalToLocalCopy,
-  ) -> Result<Option<Vec<u8>>, CacheReadFileError>;
   /// Reads the headers for the cache item.
   fn read_headers(
     &self,
@@ -164,7 +170,7 @@ mod test {
   use super::*;
 
   #[test]
-  fn deserialized_no_now() {
+  fn deserialized_no_time() {
     let json = r#"{
       "headers": {
         "content-type": "application/javascript"
@@ -183,5 +189,26 @@ mod test {
         url: "https://deno.land/std/http/file_server.ts".to_string(),
       }
     );
+  }
+
+  #[test]
+  fn serialize_deserialize_time() {
+    let json = r#"{
+      "headers": {
+        "content-type": "application/javascript"
+      },
+      "url": "https://deno.land/std/http/file_server.ts",
+      "time": 123456789
+    }"#;
+    let data: SerializedCachedUrlMetadata = serde_json::from_str(json).unwrap();
+    let expected = SerializedCachedUrlMetadata {
+      headers: HeadersMap::from([(
+        "content-type".to_string(),
+        "application/javascript".to_string(),
+      )]),
+      time: Some(123456789),
+      url: "https://deno.land/std/http/file_server.ts".to_string(),
+    };
+    assert_eq!(data, expected);
   }
 }
