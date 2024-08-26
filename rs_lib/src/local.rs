@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -447,24 +448,25 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
   }
 }
 
-pub(super) struct LocalCacheSubPath {
+pub(super) struct LocalCacheSubPath<'a> {
   pub has_hash: bool,
-  pub parts: Vec<String>,
+  pub parts: Vec<Cow<'a, str>>,
 }
 
-impl LocalCacheSubPath {
+impl<'a> LocalCacheSubPath<'a> {
   pub fn as_path_from_root(&self, root_path: &Path) -> PathBuf {
     let mut path = root_path.to_path_buf();
     for part in &self.parts {
-      path.push(part);
+      path.push(part.as_ref());
     }
     path
   }
 
   pub fn as_relative_path(&self) -> PathBuf {
-    let mut path = PathBuf::with_capacity(self.parts.len());
+    let mut path =
+      PathBuf::with_capacity(self.parts.iter().map(|p| p.len() + 1).sum());
     for part in &self.parts {
-      path.push(part);
+      path.push(part.as_ref());
     }
     path
   }
@@ -474,11 +476,11 @@ fn headers_content_type(headers: &HeadersMap) -> Option<&str> {
   headers.get("content-type").map(|s| s.as_str())
 }
 
-fn url_to_local_sub_path(
-  url: &Url,
+fn url_to_local_sub_path<'a>(
+  url: &'a Url,
   destination: HttpCacheItemKeyDestination,
   content_type: Option<&str>,
-) -> std::io::Result<LocalCacheSubPath> {
+) -> std::io::Result<LocalCacheSubPath<'a>> {
   // https://stackoverflow.com/a/31976060/188246
   static FORBIDDEN_CHARS: Lazy<HashSet<char>> = Lazy::new(|| {
     HashSet::from(['?', '<', '>', ':', '*', '|', '\\', ':', '"', '\'', '/'])
@@ -638,19 +640,29 @@ fn url_to_local_sub_path(
     base_parts.remove(0);
   } else {
     let scheme = base_parts.remove(0);
-    base_parts[0] = format!("{}_{}", scheme, base_parts[0]);
+    base_parts[0] = Cow::Owned(format!("{}_{}", scheme, base_parts[0]));
   }
 
   // first, try to get the filename of the path
   let path_segments = url_path_segments(url);
   let mut parts = base_parts
     .into_iter()
-    .chain(path_segments.map(|s| s.to_string()))
+    .chain(path_segments.map(Cow::Borrowed))
     .collect::<Vec<_>>();
 
   // push the query parameter onto the last part
   if let Some(query) = url.query() {
     let last_part = parts.last_mut().unwrap();
+    let last_part = match last_part {
+      Cow::Borrowed(_) => {
+        *last_part = Cow::Owned(last_part.to_string());
+        match last_part {
+          Cow::Borrowed(_) => unreachable!(),
+          Cow::Owned(ref mut s) => s,
+        }
+      }
+      Cow::Owned(last_part) => last_part,
+    };
     last_part.push('?');
     last_part.push_str(query);
   }
