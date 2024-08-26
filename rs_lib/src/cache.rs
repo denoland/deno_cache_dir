@@ -2,6 +2,7 @@
 
 use serde::Deserialize;
 use serde::Serialize;
+use std::borrow::Cow;
 use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -58,38 +59,39 @@ impl<'a> Checksum<'a> {
 /// them properly they are deterministically hashed into ASCII
 /// strings.
 pub fn url_to_filename(url: &Url) -> std::io::Result<PathBuf> {
-  let Some(mut cache_filename) = base_url_to_filename(url) else {
+  // Replaces port part with a special string token (because
+  // ":" cannot be used in filename on some platforms).
+  // Ex: $DENO_DIR/deps/https/deno.land/
+  let Some(cache_parts) = base_url_to_filename_parts(url, "_PORT") else {
     return Err(std::io::Error::new(
       ErrorKind::InvalidInput,
       format!("Can't convert url (\"{}\") to filename.", url),
     ));
   };
 
-  let mut rest_str = url.path().to_string();
-  if let Some(query) = url.query() {
+  let rest_str = if let Some(query) = url.query() {
+    let mut rest_str =
+      String::with_capacity(url.path().len() + 1 + query.len());
+    rest_str.push_str(url.path());
     rest_str.push('?');
     rest_str.push_str(query);
-  }
+    Cow::Owned(rest_str)
+  } else {
+    Cow::Borrowed(url.path())
+  };
+
   // NOTE: fragment is omitted on purpose - it's not taken into
   // account when caching - it denotes parts of webpage, which
   // in case of static resources doesn't make much sense
   let hashed_filename = checksum(rest_str.as_bytes());
+  let capacity = cache_parts.iter().map(|s| s.len() + 1).sum::<usize>()
+    + 1
+    + hashed_filename.len();
+  let mut cache_filename = PathBuf::with_capacity(capacity);
+  cache_filename.extend(cache_parts.iter().map(|s| s.as_ref()));
   cache_filename.push(hashed_filename);
+  debug_assert_eq!(cache_filename.capacity(), capacity);
   Ok(cache_filename)
-}
-
-// Turn base of url (scheme, hostname, port) into a valid filename.
-/// This method replaces port part with a special string token (because
-/// ":" cannot be used in filename on some platforms).
-/// Ex: $DENO_DIR/deps/https/deno.land/
-fn base_url_to_filename(url: &Url) -> Option<PathBuf> {
-  base_url_to_filename_parts(url, "_PORT").map(|parts| {
-    let mut out = PathBuf::new();
-    for part in parts {
-      out.push(part);
-    }
-    out
-  })
 }
 
 #[derive(Debug, Error)]
