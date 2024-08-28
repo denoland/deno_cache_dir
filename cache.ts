@@ -1,8 +1,7 @@
 // Copyright 2018-2024 the Deno authors. MIT license.
 
-import type { LoadResponse } from "@deno/graph";
+import type { LoadResponse, RequestDestination } from "@deno/graph";
 import type { CacheSetting, FileFetcher } from "./file_fetcher.ts";
-import { RequestDestination } from "./http_cache.ts";
 
 /** Provides an interface to Deno's CLI cache.
  *
@@ -17,6 +16,7 @@ export class FetchCacher {
   // this should have the same interface as deno_graph's loader
   load = (
     specifier: string,
+    requestDestination: RequestDestination,
     _isDynamic?: boolean,
     cacheSetting?: CacheSetting,
     checksum?: string,
@@ -24,8 +24,7 @@ export class FetchCacher {
     const url = new URL(specifier);
     return this.#fileFetcher.fetchOnce(
       url,
-      // todo(THIS PR): hook this up to deno graph
-      RequestDestination.Script,
+      requestDestination,
       { cacheSetting, checksum },
     );
   };

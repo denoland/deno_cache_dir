@@ -59,19 +59,19 @@ impl<'a> Checksum<'a> {
 /// strings.
 pub fn url_to_filename(
   url: &Url,
-  destination: HttpCacheItemKeyDestination,
+  destination: RequestDestination,
 ) -> std::io::Result<PathBuf> {
-  fn checksum(v: &[u8], destination: HttpCacheItemKeyDestination) -> String {
+  fn checksum(v: &[u8], destination: RequestDestination) -> String {
     use sha2::Digest;
     use sha2::Sha256;
 
     let mut hasher = Sha256::new();
     hasher.update(v);
     match destination {
-      HttpCacheItemKeyDestination::Script => {
+      RequestDestination::Script => {
         // do nothing
       }
-      HttpCacheItemKeyDestination::Json => {
+      RequestDestination::Json => {
         hasher.update(b"json");
       }
     }
@@ -138,7 +138,7 @@ pub struct CacheEntry {
 
 /// The request destination: https://fetch.spec.whatwg.org/#concept-request-destination
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum HttpCacheItemKeyDestination {
+pub enum RequestDestination {
   Script,
   Json,
 }
@@ -152,7 +152,7 @@ pub struct HttpCacheItemKey<'a> {
   #[cfg(debug_assertions)]
   pub(super) is_local_key: bool,
   pub(super) url: &'a Url,
-  pub(super) destination: HttpCacheItemKeyDestination,
+  pub(super) destination: RequestDestination,
   /// This will be set all the time for the global cache, but it
   /// won't ever be set for the local cache because that also needs
   /// header information to determine the final path.
@@ -164,18 +164,18 @@ pub trait HttpCache: Send + Sync + std::fmt::Debug {
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
-    destination: HttpCacheItemKeyDestination,
+    destination: RequestDestination,
   ) -> std::io::Result<HttpCacheItemKey<'a>>;
 
   fn contains(
     &self,
     url: &Url,
-    destination: HttpCacheItemKeyDestination,
+    destination: RequestDestination,
   ) -> bool;
   fn set(
     &self,
     url: &Url,
-    destination: HttpCacheItemKeyDestination,
+    destination: RequestDestination,
     headers: HeadersMap,
     content: &[u8],
   ) -> std::io::Result<()>;

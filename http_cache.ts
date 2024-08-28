@@ -1,17 +1,13 @@
 // Copyright 2018-2024 the Deno authors. MIT license.
 
 import { isAbsolute } from "@std/path";
-import { assert } from "./util.ts";
+import type { RequestDestination } from "@deno/graph";
+import { assert, destinationToWasmNumber } from "./util.ts";
 import {
   type GlobalHttpCache,
   instantiate,
   type LocalHttpCache,
 } from "./lib/deno_cache_dir.generated.js";
-
-export enum RequestDestination {
-  Script = 0,
-  Json = 1,
-}
 
 export interface HttpCacheCreateOptions {
   root: string;
@@ -79,7 +75,7 @@ export class HttpCache implements Disposable {
     url: URL,
     destination: RequestDestination,
   ): Record<string, string> | undefined {
-    const map = this.#cache.getHeaders(url.toString(), destination);
+    const map = this.#cache.getHeaders(url.toString(), destinationToWasmNumber(destination));
     return map == null ? undefined : Object.fromEntries(map);
   }
 
@@ -90,7 +86,7 @@ export class HttpCache implements Disposable {
   ): HttpCacheEntry | undefined {
     const data = this.#cache.get(
       url.toString(),
-      destination,
+      destinationToWasmNumber(destination),
       options?.checksum,
     );
     return data == null ? undefined : data;
@@ -113,9 +109,11 @@ export class HttpCache implements Disposable {
     }
     this.#cache.set(
       url.toString(),
-      destination,
+      destinationToWasmNumber(destination),
       headers,
       content,
     );
   }
 }
+
+

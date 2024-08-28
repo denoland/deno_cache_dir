@@ -18,7 +18,7 @@ pub use cache::ChecksumIntegrityError;
 pub use cache::GlobalToLocalCopy;
 pub use cache::HttpCache;
 pub use cache::HttpCacheItemKey;
-pub use cache::HttpCacheItemKeyDestination;
+pub use cache::RequestDestination;
 pub use cache::SerializedCachedUrlMetadata;
 pub use env::DenoCacheEnv;
 pub use global::GlobalHttpCache;
@@ -50,7 +50,7 @@ pub mod wasm {
   use crate::Checksum;
   use crate::DenoCacheEnv;
   use crate::HttpCache;
-  use crate::HttpCacheItemKeyDestination;
+  use crate::RequestDestination;
 
   #[wasm_bindgen(module = "/fs.js")]
   extern "C" {
@@ -336,10 +336,10 @@ pub mod wasm {
 
   fn parse_destination(
     destination: usize,
-  ) -> std::io::Result<HttpCacheItemKeyDestination> {
+  ) -> std::io::Result<RequestDestination> {
     match destination {
-      0 => Ok(HttpCacheItemKeyDestination::Script),
-      1 => Ok(HttpCacheItemKeyDestination::Json),
+      0 => Ok(RequestDestination::Script),
+      1 => Ok(RequestDestination::Json),
       _ => Err(std::io::Error::new(
         ErrorKind::InvalidInput,
         "Invalid destination",

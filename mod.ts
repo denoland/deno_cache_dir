@@ -33,7 +33,7 @@
  */
 
 import { FetchCacher } from "./cache.ts";
-import type { CacheInfo, LoadResponse } from "@deno/graph";
+import type { CacheInfo, LoadResponse, RequestDestination } from "@deno/graph";
 import { DenoDir } from "./deno_dir.ts";
 import { type CacheSetting, FileFetcher } from "./file_fetcher.ts";
 
@@ -53,6 +53,7 @@ export interface Loader {
    */
   load(
     specifier: string,
+    desintation: RequestDestination,
     isDynamic?: boolean,
     cacheSetting?: CacheSetting,
     checksum?: string,

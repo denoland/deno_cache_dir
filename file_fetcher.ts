@@ -3,9 +3,8 @@
 import { AuthTokens } from "./auth_tokens.ts";
 import { fromFileUrl } from "@std/path";
 import * as colors from "@std/fmt/colors";
-import type { LoadResponse } from "@deno/graph";
+import type { LoadResponse, RequestDestination } from "@deno/graph";
 import type { HttpCache, HttpCacheGetOptions } from "./http_cache.ts";
-import { RequestDestination } from "./http_cache.ts";
 
 /**
  * A setting that determines how the cache is handled for remote dependencies.
@@ -362,7 +361,7 @@ export async function fetchWithRetries(
   init?: { headers?: Headers },
 ) {
   switch (destination) {
-    case RequestDestination.Json: {
+    case "json": {
       init = init ?? {};
       init.headers = init.headers ?? new Headers();
       if (!init.headers.has("accept")) {
@@ -370,7 +369,7 @@ export async function fetchWithRetries(
       }
       break;
     }
-    case RequestDestination.Script: {
+    case "script": {
       // ignore
       break;
     }

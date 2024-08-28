@@ -1,11 +1,11 @@
 // Copyright 2018-2024 the Deno authors. MIT license.
 
+import type { RequestDestination } from "@deno/graph";
 import { ensureDir } from "@std/fs/ensure-dir";
 import { dirname, isAbsolute, join } from "@std/path";
 import { readAll, writeAll } from "@std/io";
-import { assert, CACHE_PERM } from "./util.ts";
+import { assert, CACHE_PERM, destinationToWasmNumber } from "./util.ts";
 import { instantiate } from "./lib/deno_cache_dir.generated.js";
-import type { RequestDestination } from "./http_cache.ts";
 
 export class DiskCache {
   location: string;
@@ -41,6 +41,6 @@ export class DiskCache {
     destination: RequestDestination,
   ): Promise<string> {
     const { url_to_filename } = await instantiate();
-    return url_to_filename(url.toString(), destination);
+    return url_to_filename(url.toString(), destinationToWasmNumber(destination));
   }
 }

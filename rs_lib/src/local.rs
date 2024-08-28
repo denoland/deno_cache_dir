@@ -18,7 +18,7 @@ use url::Url;
 use crate::cache::CacheEntry;
 use crate::cache::CacheReadFileError;
 use crate::cache::GlobalToLocalCopy;
-use crate::cache::HttpCacheItemKeyDestination;
+use crate::cache::RequestDestination;
 use crate::SerializedCachedUrlMetadata;
 
 use super::common::base_url_to_filename_parts;
@@ -67,7 +67,7 @@ impl<Env: DenoCacheEnv> LocalLspHttpCache<Env> {
   pub fn get_file_url(
     &self,
     url: &Url,
-    destination: HttpCacheItemKeyDestination,
+    destination: RequestDestination,
   ) -> Option<Url> {
     let sub_path = {
       let data = self.cache.manifest.data.read();
@@ -154,7 +154,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalLspHttpCache<Env> {
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
-    destination: HttpCacheItemKeyDestination,
+    destination: RequestDestination,
   ) -> std::io::Result<HttpCacheItemKey<'a>> {
     self.cache.cache_item_key(url, destination)
   }
@@ -162,7 +162,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalLspHttpCache<Env> {
   fn contains(
     &self,
     url: &Url,
-    destination: HttpCacheItemKeyDestination,
+    destination: RequestDestination,
   ) -> bool {
     self.cache.contains(url, destination)
   }
@@ -170,7 +170,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalLspHttpCache<Env> {
   fn set(
     &self,
     url: &Url,
-    destination: HttpCacheItemKeyDestination,
+    destination: RequestDestination,
     headers: HeadersMap,
     content: &[u8],
   ) -> std::io::Result<()> {
@@ -243,7 +243,7 @@ impl<Env: DenoCacheEnv> LocalHttpCache<Env> {
   fn get_url_headers(
     &self,
     url: &Url,
-    destination: HttpCacheItemKeyDestination,
+    destination: RequestDestination,
   ) -> std::io::Result<Option<HeadersMap>> {
     if let Some(metadata) = self.manifest.get_stored_headers(url, destination) {
       return Ok(Some(metadata));
@@ -289,7 +289,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
-    destination: HttpCacheItemKeyDestination,
+    destination: RequestDestination,
   ) -> std::io::Result<HttpCacheItemKey<'a>> {
     Ok(HttpCacheItemKey {
       #[cfg(debug_assertions)]
@@ -303,7 +303,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
   fn contains(
     &self,
     url: &Url,
-    destination: HttpCacheItemKeyDestination,
+    destination: RequestDestination,
   ) -> bool {
     self
       .get_url_headers(url, destination)
@@ -342,7 +342,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
   fn set(
     &self,
     url: &Url,
-    destination: HttpCacheItemKeyDestination,
+    destination: RequestDestination,
     headers: HeadersMap,
     content: &[u8],
   ) -> std::io::Result<()> {
@@ -478,7 +478,7 @@ fn headers_content_type(headers: &HeadersMap) -> Option<&str> {
 
 fn url_to_local_sub_path<'a>(
   url: &'a Url,
-  destination: HttpCacheItemKeyDestination,
+  destination: RequestDestination,
   content_type: Option<&str>,
 ) -> std::io::Result<LocalCacheSubPath<'a>> {
   // https://stackoverflow.com/a/31976060/188246
@@ -533,7 +533,7 @@ fn url_to_local_sub_path<'a>(
 
   fn short_hash(
     part: &str,
-    destination: HttpCacheItemKeyDestination,
+    destination: RequestDestination,
     last_ext: Option<&str>,
   ) -> String {
     // This function is a bit of a balancing act between readability
@@ -560,8 +560,8 @@ fn url_to_local_sub_path<'a>(
     let destination =
       if should_hash_due_to_destination(part, destination, last_ext) {
         match destination {
-          HttpCacheItemKeyDestination::Script => "s",
-          HttpCacheItemKeyDestination::Json => "j",
+          RequestDestination::Script => "s",
+          RequestDestination::Json => "j",
         }
       } else {
         ""
@@ -576,7 +576,7 @@ fn url_to_local_sub_path<'a>(
 
   fn should_hash_part(
     part: &str,
-    destination: HttpCacheItemKeyDestination,
+    destination: RequestDestination,
     last_ext: Option<&str>,
   ) -> bool {
     if should_hash_due_to_destination(part, destination, last_ext) {
@@ -610,7 +610,7 @@ fn url_to_local_sub_path<'a>(
 
   fn should_hash_due_to_destination(
     part: &str,
-    destination: HttpCacheItemKeyDestination,
+    destination: RequestDestination,
     last_ext: Option<&str>,
   ) -> bool {
     let Some(last_ext) = last_ext else {
@@ -619,10 +619,10 @@ fn url_to_local_sub_path<'a>(
     // get the part without the query
     let part = part.split_once('?').map(|(p, _)| p).unwrap_or(part);
     match destination {
-      HttpCacheItemKeyDestination::Script => {
+      RequestDestination::Script => {
         !part.ends_with(last_ext) || last_ext == ".json"
       }
-      HttpCacheItemKeyDestination::Json => !part.ends_with(".json"),
+      RequestDestination::Json => !part.ends_with(".json"),
     }
   }
 
@@ -730,7 +730,7 @@ impl<Env: DenoCacheEnv> LocalCacheManifest<Env> {
     &self,
     sub_path: LocalCacheSubPath,
     url: Url,
-    destination: HttpCacheItemKeyDestination,
+    destination: RequestDestination,
     mut original_headers: HashMap<String, String>,
   ) {
     fn should_keep_content_type_header(
@@ -821,7 +821,7 @@ impl<Env: DenoCacheEnv> LocalCacheManifest<Env> {
   pub fn get_stored_headers(
     &self,
     url: &Url,
-    destination: HttpCacheItemKeyDestination,
+    destination: RequestDestination,
   ) -> Option<HeadersMap> {
     let data = self.data.read();
     data.get(url, destination).map(|module| {
@@ -851,7 +851,7 @@ mod manifest {
   use serde::Serializer;
   use url::Url;
 
-  use crate::cache::HttpCacheItemKeyDestination;
+  use crate::cache::RequestDestination;
 
   use super::url_to_local_sub_path;
   use super::LocalCacheSubPath;
@@ -888,7 +888,7 @@ mod manifest {
     pub modules: BTreeMap<
       Url,
       BTreeMap<
-        HttpCacheItemKeyDestination,
+        RequestDestination,
         SerializedLocalCacheManifestDataModule,
       >,
     >,
@@ -898,7 +898,7 @@ mod manifest {
     modules: &BTreeMap<
       Url,
       BTreeMap<
-        HttpCacheItemKeyDestination,
+        RequestDestination,
         SerializedLocalCacheManifestDataModule,
       >,
     >,
@@ -911,8 +911,8 @@ mod manifest {
     for (url, destinations) in modules {
       for (destination, module) in destinations {
         let key = match destination {
-          HttpCacheItemKeyDestination::Script => url.to_string(),
-          HttpCacheItemKeyDestination::Json => format!("{}|json", url),
+          RequestDestination::Script => url.to_string(),
+          RequestDestination::Json => format!("{}|json", url),
         };
         map.serialize_entry(&key, module)?;
       }
@@ -926,7 +926,7 @@ mod manifest {
     BTreeMap<
       Url,
       BTreeMap<
-        HttpCacheItemKeyDestination,
+        RequestDestination,
         SerializedLocalCacheManifestDataModule,
       >,
     >,
@@ -941,7 +941,7 @@ mod manifest {
       type Value = BTreeMap<
         Url,
         BTreeMap<
-          HttpCacheItemKeyDestination,
+          RequestDestination,
           SerializedLocalCacheManifestDataModule,
         >,
       >;
@@ -950,7 +950,7 @@ mod manifest {
         &self,
         formatter: &mut std::fmt::Formatter,
       ) -> std::fmt::Result {
-        formatter.write_str("a map with Url as key and BTreeMap<HttpCacheItemKeyDestination, SerializedLocalCacheManifestDataModule> as value")
+        formatter.write_str("a map with Url and request destination as key and SerializedLocalCacheManifestDataModule as value")
       }
 
       fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
@@ -967,7 +967,7 @@ mod manifest {
               (
                 part,
                 match destination {
-                  "json" => HttpCacheItemKeyDestination::Json,
+                  "json" => RequestDestination::Json,
                   _ => {
                     return Err(de::Error::custom(format!(
                       "Unknown destination '{}'",
@@ -977,7 +977,7 @@ mod manifest {
                 },
               )
             } else {
-              (key.as_str(), HttpCacheItemKeyDestination::Script)
+              (key.as_str(), RequestDestination::Script)
             };
 
           let url = Url::parse(url_str).map_err(de::Error::custom)?;
@@ -1064,7 +1064,7 @@ mod manifest {
     pub fn get(
       &self,
       url: &Url,
-      destination: HttpCacheItemKeyDestination,
+      destination: RequestDestination,
     ) -> Option<&SerializedLocalCacheManifestDataModule> {
       self
         .serialized
@@ -1107,7 +1107,7 @@ mod manifest {
     pub fn insert(
       &mut self,
       url: Url,
-      destination: HttpCacheItemKeyDestination,
+      destination: RequestDestination,
       sub_path: &LocalCacheSubPath,
       new_data: SerializedLocalCacheManifestDataModule,
     ) {
@@ -1125,7 +1125,7 @@ mod manifest {
     pub fn remove(
       &mut self,
       url: &Url,
-      destination: HttpCacheItemKeyDestination,
+      destination: RequestDestination,
       sub_path: &LocalCacheSubPath,
     ) -> bool {
       if self
@@ -1168,13 +1168,13 @@ mod test {
   fn test_url_to_local_sub_path() {
     run_test(
       "https://deno.land/x/mod.ts",
-      HttpCacheItemKeyDestination::Script,
+      RequestDestination::Script,
       &[],
       "deno.land/x/mod.ts",
     );
     run_test(
       "http://deno.land/x/mod.ts",
-      HttpCacheItemKeyDestination::Script,
+      RequestDestination::Script,
       &[],
       // http gets added to the folder name, but not https
       "http_deno.land/x/mod.ts",
@@ -1182,49 +1182,49 @@ mod test {
     run_test(
       // capital letter in filename
       "https://deno.land/x/MOD.ts",
-      HttpCacheItemKeyDestination::Script,
+      RequestDestination::Script,
       &[],
       "deno.land/x/#mod_fa860.ts",
     );
     run_test(
       // query string
       "https://deno.land/x/mod.ts?testing=1",
-      HttpCacheItemKeyDestination::Script,
+      RequestDestination::Script,
       &[],
       "deno.land/x/#mod_2eb80.ts",
     );
     run_test(
       // capital letter in directory
       "https://deno.land/OTHER/mod.ts",
-      HttpCacheItemKeyDestination::Script,
+      RequestDestination::Script,
       &[],
       "deno.land/#other_1c55d/mod.ts",
     );
     run_test(
       // under max of 30 chars
       "https://deno.land/x/012345678901234567890123456.js",
-      HttpCacheItemKeyDestination::Script,
+      RequestDestination::Script,
       &[],
       "deno.land/x/012345678901234567890123456.js",
     );
     run_test(
       // max 30 chars
       "https://deno.land/x/0123456789012345678901234567.js",
-      HttpCacheItemKeyDestination::Script,
+      RequestDestination::Script,
       &[],
       "deno.land/x/#01234567890123456789_836de.js",
     );
     run_test(
       // forbidden char
       "https://deno.land/x/mod's.js",
-      HttpCacheItemKeyDestination::Script,
+      RequestDestination::Script,
       &[],
       "deno.land/x/#mod_s_44fc8.js",
     );
     run_test(
       // no extension
       "https://deno.land/x/mod",
-      HttpCacheItemKeyDestination::Script,
+      RequestDestination::Script,
       &[("content-type", "application/typescript")],
       "deno.land/x/#mod_e55cfs.ts",
     );
@@ -1232,21 +1232,21 @@ mod test {
       // known extension in directory is not allowed
       // because it could conflict with a file of the same name
       "https://deno.land/x/mod.js/mod.js",
-      HttpCacheItemKeyDestination::Script,
+      RequestDestination::Script,
       &[],
       "deno.land/x/#mod.js_59c58/mod.js",
     );
     run_test(
       // slash slash in path
       "http://localhost//mod.js",
-      HttpCacheItemKeyDestination::Script,
+      RequestDestination::Script,
       &[],
       "http_localhost/#e3b0c44/mod.js",
     );
     run_test(
       // headers same extension
       "https://deno.land/x/mod.ts",
-      HttpCacheItemKeyDestination::Script,
+      RequestDestination::Script,
       &[("content-type", "application/typescript")],
       "deno.land/x/mod.ts",
     );
@@ -1255,14 +1255,14 @@ mod test {
       // if someone deletes the manifest file, then we don't want
       // https://deno.land/x/mod.ts to resolve as a typescript file
       "https://deno.land/x/mod.ts",
-      HttpCacheItemKeyDestination::Script,
+      RequestDestination::Script,
       &[("content-type", "application/javascript")],
       "deno.land/x/#mod.ts_e8c36s.js",
     );
     run_test(
       // not allowed windows folder name
       "https://deno.land/x/con/con.ts",
-      HttpCacheItemKeyDestination::Script,
+      RequestDestination::Script,
       &[],
       "deno.land/x/#con_1143d/con.ts",
     );
@@ -1270,21 +1270,21 @@ mod test {
       // disallow ending a directory with a period
       // https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file
       "https://deno.land/x/test./main.ts",
-      HttpCacheItemKeyDestination::Script,
+      RequestDestination::Script,
       &[],
       "deno.land/x/#test._4ee3d/main.ts",
     );
     run_test(
       // json, but as script
       "https://deno.land/data.json",
-      HttpCacheItemKeyDestination::Script,
+      RequestDestination::Script,
       &[],
       "deno.land/#data_99377s.json",
     );
     run_test(
       // json
       "https://deno.land/data.json",
-      HttpCacheItemKeyDestination::Json,
+      RequestDestination::Json,
       &[],
       "deno.land/data.json",
     );
@@ -1292,7 +1292,7 @@ mod test {
     #[track_caller]
     fn run_test(
       url: &str,
-      destination: HttpCacheItemKeyDestination,
+      destination: RequestDestination,
       headers: &[(&str, &str)],
       expected: &str,
     ) {
