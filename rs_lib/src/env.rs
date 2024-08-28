@@ -7,6 +7,7 @@ pub trait DenoCacheEnv: Send + Sync + std::fmt::Debug + Clone {
   fn read_file_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>>;
   fn atomic_write_file(&self, path: &Path, bytes: &[u8])
     -> std::io::Result<()>;
+  fn remove_file(&self, path: &Path) -> std::io::Result<()>;
   fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>>;
   fn is_file(&self, path: &Path) -> bool;
   fn time_now(&self) -> SystemTime;
@@ -46,6 +47,10 @@ mod test_fs {
         }
         Err(err) => Err(err),
       }
+    }
+
+    fn remove_file(&self, path: &Path) -> std::io::Result<()> {
+      std::fs::remove_file(path)
     }
 
     fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>> {
