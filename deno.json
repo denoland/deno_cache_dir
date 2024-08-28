@@ -18,6 +18,7 @@
       "Cargo.lock",
       "rs_lib",
       "**/*.toml",
+      "!lib/snippets/",
       "!lib/deno_cache_dir.generated.js"
     ]
   },

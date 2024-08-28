@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
 use std::time::SystemTime;
@@ -126,7 +127,17 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
     #[cfg(debug_assertions)]
     debug_assert!(!key.is_local_key);
 
-    let maybe_file = cache_file::read(&self.env, self.key_file_path(key))?;
+    let file_path = self.key_file_path(key);
+    let maybe_file = match cache_file::read(&self.env, file_path) {
+      Ok(maybe_file) => maybe_file,
+      Err(cache_file::ReadError::Io(err)) => {
+        return Err(CacheReadFileError::Io(err))
+      }
+      Err(cache_file::ReadError::InvalidFormat) => {
+        handle_maybe_deno_1_x_cache_entry(&self.env, file_path);
+        None
+      }
+    };
 
     if let Some(file) = &maybe_file {
       if let Some(expected_checksum) = maybe_checksum {
@@ -185,6 +196,35 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
     Ok(maybe_metadata.and_then(|m| {
       Some(SystemTime::UNIX_EPOCH + Duration::from_secs(m.time?))
     }))
+  }
+}
+
+fn handle_maybe_deno_1_x_cache_entry(
+  env: &impl DenoCacheEnv,
+  file_path: &Path,
+) {
+  // Deno 1.x structures its cache in two separate files using the same name for
+  // the content, but a separate <filename>.metadata.json file for the headers.
+  //
+  // We don't want the following scenario to happen:
+  //
+  // 1. User generates the cache on Deno 1.x.
+  //    - <filename> and <filename>.metadata.json are created.
+  // 2. User updates to Deno 2 and is updated to the new cache.
+  //    - <filename> is updated to new single file format
+  // 3. User downgrades to Deno 1.x.
+  //    - <filename> is now using the new Deno 2.0 format which
+  //      is incorrect and has a different content than if they
+  //      cached on Deno 1.x
+  //
+  // To prevent this scenario, check for the precence of the Deno 1.x
+  // <filename>.metadata.json file. If it exists, delete it.
+  let metadata_file = file_path.with_extension("metadata.json");
+  if env.is_file(&metadata_file) {
+    // delete the Deno 1.x cache files, deleting the metadata.json
+    // file first in case the process exits between these two statements
+    let _ = env.remove_file(&file_path.with_extension("metadata.json"));
+    let _ = env.remove_file(file_path);
   }
 }
 

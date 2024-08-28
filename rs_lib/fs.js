@@ -10,6 +10,10 @@ export function read_file_bytes(path) {
   }
 }
 
+export function remove_file(path) {
+  Deno.removeSync(path);
+}
+
 export function atomic_write_file(path, bytes) {
   function parentPath(path) {
     const lastSlashIndex = path.lastIndexOf("/") ?? path.lastIndexOf("\\");
