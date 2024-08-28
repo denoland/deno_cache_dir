@@ -130,7 +130,9 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
     let file_path = self.key_file_path(key);
     let maybe_file = match cache_file::read(&self.env, file_path) {
       Ok(maybe_file) => maybe_file,
-      Err(cache_file::ReadError::Io(err)) => return Err(CacheReadFileError::Io(err)),
+      Err(cache_file::ReadError::Io(err)) => {
+        return Err(CacheReadFileError::Io(err))
+      }
       Err(cache_file::ReadError::InvalidFormat) => {
         handle_maybe_deno_1_x_cache_entry(&self.env, file_path);
         None
@@ -197,10 +199,12 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
   }
 }
 
-fn handle_maybe_deno_1_x_cache_entry(env: &impl DenoCacheEnv, file_path: &Path) {
-  // Deno 1.x structures its cache in two separate files using
-  // the same name for the content, but a separate
-  // <filename>.metadata.json file.
+fn handle_maybe_deno_1_x_cache_entry(
+  env: &impl DenoCacheEnv,
+  file_path: &Path,
+) {
+  // Deno 1.x structures its cache in two separate files using the same name for
+  // the content, but a separate <filename>.metadata.json file for the headers.
   //
   // We don't want the following scenario to happen:
   //

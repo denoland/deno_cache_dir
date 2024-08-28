@@ -100,7 +100,8 @@ fn test_global_deno_1_x_metadata_existing() {
   let cache = GlobalHttpCache::new(cache_dir_path.clone(), fs.clone());
   // add the two files for deno 1.x
   let deno_land_dir = cache_dir_path.join("https").join("deno.land");
-  let cached_file_path = deno_land_dir.join("c565f9618e105d73fa1b5ffcbdae2b2e934d087839c2807aa83b4e60149adaf8");
+  let cached_file_path = deno_land_dir
+    .join("c565f9618e105d73fa1b5ffcbdae2b2e934d087839c2807aa83b4e60149adaf8");
   fs.atomic_write_file(&cached_file_path, &[]).unwrap();
   let metadata_file_path = cached_file_path.with_extension("metadata.json");
   fs.atomic_write_file(&metadata_file_path, &[]).unwrap();

@@ -84,10 +84,7 @@ pub mod wasm {
       Ok(())
     }
 
-    fn remove_file(
-      &self,
-      path: &Path,
-    ) -> std::io::Result<()> {
+    fn remove_file(&self, path: &Path) -> std::io::Result<()> {
       remove_file(&path.to_string_lossy()).map_err(js_to_io_error)
     }
 
