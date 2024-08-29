@@ -57,6 +57,8 @@ pub mod wasm {
     #[wasm_bindgen(catch)]
     fn read_file_bytes(path: &str) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
+    fn remove_file(path: &str) -> Result<(), JsValue>;
+    #[wasm_bindgen(catch)]
     fn atomic_write_file(path: &str, bytes: &[u8]) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
     fn modified_time(path: &str) -> Result<Option<usize>, JsValue>;
@@ -86,6 +88,10 @@ pub mod wasm {
       atomic_write_file(&path.to_string_lossy(), bytes)
         .map_err(js_to_io_error)?;
       Ok(())
+    }
+
+    fn remove_file(&self, path: &Path) -> std::io::Result<()> {
+      remove_file(&path.to_string_lossy()).map_err(js_to_io_error)
     }
 
     fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>> {
