@@ -11,7 +11,15 @@ export function read_file_bytes(path) {
 }
 
 export function canonicalize_path(path) {
-  return Deno.realPathSync(path);
+  try {
+    return Deno.realPathSync(path);
+  } catch (err) {
+    if (err instanceof Deno.errors.NotFound) {
+      return undefined;
+    } else {
+      throw err;
+    }
+  }
 }
 
 export function create_dir_all(path) {

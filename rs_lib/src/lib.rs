@@ -56,7 +56,7 @@ pub mod wasm {
     #[wasm_bindgen(catch)]
     fn atomic_write_file(path: &str, bytes: &[u8]) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
-    fn canonicalize_path(path: &str) -> Result<String, JsValue>;
+    fn canonicalize_path(path: &str) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
     fn create_dir_all(path: &str) -> Result<(), JsValue>;
     #[wasm_bindgen(catch)]
@@ -90,9 +90,13 @@ pub mod wasm {
     }
 
     fn canonicalize_path(&self, path: &Path) -> std::io::Result<PathBuf> {
-      let path_string =
+      let js_value =
         canonicalize_path(&path.to_string_lossy()).map_err(js_to_io_error)?;
-      Ok(PathBuf::from(path_string))
+      if js_value.is_null() || js_value.is_undefined() {
+        Err(std::io::Error::new(ErrorKind::NotFound, ""))
+      } else {
+        Ok(PathBuf::from(js_value.as_string().unwrap()))
+      }
     }
 
     fn create_dir_all(&self, path: &Path) -> std::io::Result<()> {
