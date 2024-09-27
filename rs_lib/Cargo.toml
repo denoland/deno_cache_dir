@@ -29,6 +29,7 @@ console_error_panic_hook = { version = "0.1.6", optional = true }
 js-sys = { version = "=0.3.68", optional = true }
 wasm-bindgen = { version = "=0.2.91", optional = true }
 serde-wasm-bindgen = { version = "0.6.5", optional = true }
+deno_path_util = "0.1.0"
 
 [dev-dependencies]
 pretty_assertions = "1.4.0"

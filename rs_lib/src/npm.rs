@@ -4,9 +4,9 @@ use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_path_util::url_from_directory_path;
 use url::Url;
 
-use crate::common::url_from_directory_path;
 use crate::DenoCacheEnv;
 
 pub struct NpmCacheFolderId {
