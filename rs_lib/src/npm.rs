@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use url::Url;
 
+use crate::common::url_from_directory_path;
 use crate::DenoCacheEnv;
 
 pub struct NpmCacheFolderId {
@@ -51,7 +52,7 @@ impl NpmCacheDir {
     // this may fail on readonly file systems, so just ignore if so
     let root_dir =
       try_get_canonicalized_root_dir(env, &root_dir).unwrap_or(root_dir);
-    let root_dir_url = Url::from_directory_path(&root_dir).unwrap();
+    let root_dir_url = url_from_directory_path(&root_dir).unwrap();
 
     let known_registries_dirnames: Vec<_> = known_registries_urls
       .into_iter()
@@ -272,6 +273,7 @@ mod test {
 
   #[test]
   fn should_get_package_folder() {
+    #[allow(clippy::disallowed_methods)]
     let root_dir = std::env::current_dir().unwrap().canonicalize().unwrap();
     let registry_url = Url::parse("https://registry.npmjs.org/").unwrap();
     let env = TestRealDenoCacheEnv;
