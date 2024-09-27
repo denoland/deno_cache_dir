@@ -90,11 +90,11 @@ pub mod wasm {
     }
 
     fn canonicalize_path(&self, path: &Path) -> std::io::Result<PathBuf> {
-      let path_string = canonicalize_path(&path.to_string_lossy())
-        .map_err(js_to_io_error)?;
+      let path_string =
+        canonicalize_path(&path.to_string_lossy()).map_err(js_to_io_error)?;
       Ok(PathBuf::from(path_string))
     }
-    
+
     fn create_dir_all(&self, path: &Path) -> std::io::Result<()> {
       create_dir_all(&path.to_string_lossy()).map_err(js_to_io_error)
     }
