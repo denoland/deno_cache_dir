@@ -86,23 +86,14 @@ impl NpmCacheDir {
     registry_url: &Url,
   ) -> PathBuf {
     if package_copy_index == 0 {
-      self.package_folder_for_nv(package_name, package_version, registry_url)
+      self
+        .package_name_folder(package_name, registry_url)
+        .join(package_version)
     } else {
       self
         .package_name_folder(package_name, registry_url)
         .join(format!("{}_{}", package_version, package_copy_index))
     }
-  }
-
-  pub fn package_folder_for_nv(
-    &self,
-    package_name: &str,
-    package_version: &str,
-    registry_url: &Url,
-  ) -> PathBuf {
-    self
-      .package_name_folder(package_name, registry_url)
-      .join(package_version)
   }
 
   pub fn package_name_folder(&self, name: &str, registry_url: &Url) -> PathBuf {
