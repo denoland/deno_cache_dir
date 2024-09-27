@@ -1,12 +1,15 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. MIT license.
 
 use std::path::Path;
+use std::path::PathBuf;
 use std::time::SystemTime;
 
 pub trait DenoCacheEnv: Send + Sync + std::fmt::Debug + Clone {
   fn read_file_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>>;
   fn atomic_write_file(&self, path: &Path, bytes: &[u8])
     -> std::io::Result<()>;
+  fn canonicalize_path(&self, path: &Path) -> std::io::Result<PathBuf>;
+  fn create_dir_all(&self, path: &Path) -> std::io::Result<()>;
   fn remove_file(&self, path: &Path) -> std::io::Result<()>;
   fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>>;
   fn is_file(&self, path: &Path) -> bool;
@@ -47,6 +50,14 @@ mod test_fs {
         }
         Err(err) => Err(err),
       }
+    }
+
+    fn canonicalize_path(&self, path: &Path) -> std::io::Result<PathBuf> {
+      path.canonicalize()
+    }
+
+    fn create_dir_all(&self, path: &Path) -> std::io::Result<()> {
+      std::fs::create_dir_all(path)
     }
 
     fn remove_file(&self, path: &Path) -> std::io::Result<()> {

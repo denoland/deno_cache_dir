@@ -1,10 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. MIT license.
 
 mod cache;
 mod common;
 mod env;
 mod global;
 mod local;
+pub mod npm;
 
 pub use cache::url_to_filename;
 pub use cache::CacheEntry;
@@ -55,6 +56,10 @@ pub mod wasm {
     #[wasm_bindgen(catch)]
     fn atomic_write_file(path: &str, bytes: &[u8]) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
+    fn canonicalize_path(path: &str) -> Result<String, JsValue>;
+    #[wasm_bindgen(catch)]
+    fn create_dir_all(path: &str) -> Result<(), JsValue>;
+    #[wasm_bindgen(catch)]
     fn modified_time(path: &str) -> Result<Option<usize>, JsValue>;
     fn is_file(path: &str) -> bool;
     fn time_now() -> usize;
@@ -82,6 +87,16 @@ pub mod wasm {
       atomic_write_file(&path.to_string_lossy(), bytes)
         .map_err(js_to_io_error)?;
       Ok(())
+    }
+
+    fn canonicalize_path(&self, path: &Path) -> std::io::Result<PathBuf> {
+      let path_string = canonicalize_path(&path.to_string_lossy())
+        .map_err(js_to_io_error)?;
+      Ok(PathBuf::from(path_string))
+    }
+    
+    fn create_dir_all(&self, path: &Path) -> std::io::Result<()> {
+      create_dir_all(&path.to_string_lossy()).map_err(js_to_io_error)
     }
 
     fn remove_file(&self, path: &Path) -> std::io::Result<()> {
