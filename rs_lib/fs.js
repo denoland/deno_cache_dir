@@ -10,6 +10,22 @@ export function read_file_bytes(path) {
   }
 }
 
+export function canonicalize_path(path) {
+  try {
+    return Deno.realPathSync(path);
+  } catch (err) {
+    if (err instanceof Deno.errors.NotFound) {
+      return undefined;
+    } else {
+      throw err;
+    }
+  }
+}
+
+export function create_dir_all(path) {
+  Deno.mkdirSync(path, { recursive: true });
+}
+
 export function remove_file(path) {
   Deno.removeSync(path);
 }

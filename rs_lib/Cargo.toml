@@ -13,6 +13,7 @@ crate-type = ["cdylib", "lib"]
 wasm = ["console_error_panic_hook", "js-sys", "serde-wasm-bindgen", "wasm-bindgen"]
 
 [dependencies]
+base32 = "=0.5.1"
 deno_media_type = "0.1.1"
 indexmap = { version = "2.0.0", features = ["serde"] }
 log = "0.4.19"
