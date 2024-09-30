@@ -4,9 +4,10 @@ use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_path_util::normalize_path;
+use deno_path_util::url_from_directory_path;
 use url::Url;
 
-use crate::common::url_from_directory_path;
 use crate::DenoCacheEnv;
 
 pub struct NpmCacheFolderId {
@@ -50,6 +51,7 @@ impl NpmCacheDir {
     }
 
     // this may fail on readonly file systems, so just ignore if so
+    let root_dir = normalize_path(root_dir);
     let root_dir =
       try_get_canonicalized_root_dir(env, &root_dir).unwrap_or(root_dir);
     let root_dir_url = url_from_directory_path(&root_dir).unwrap();
