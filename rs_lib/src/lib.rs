@@ -52,8 +52,6 @@ pub mod wasm {
     #[wasm_bindgen(catch)]
     fn read_file_bytes(path: &str) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
-    fn remove_file(path: &str) -> Result<(), JsValue>;
-    #[wasm_bindgen(catch)]
     fn atomic_write_file(path: &str, bytes: &[u8]) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
     fn canonicalize_path(path: &str) -> Result<JsValue, JsValue>;
@@ -101,10 +99,6 @@ pub mod wasm {
 
     fn create_dir_all(&self, path: &Path) -> std::io::Result<()> {
       create_dir_all(&path.to_string_lossy()).map_err(js_to_io_error)
-    }
-
-    fn remove_file(&self, path: &Path) -> std::io::Result<()> {
-      remove_file(&path.to_string_lossy()).map_err(js_to_io_error)
     }
 
     fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>> {

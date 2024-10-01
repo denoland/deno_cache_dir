@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use deno_cache_dir::CacheReadFileError;
 use deno_cache_dir::Checksum;
-use deno_cache_dir::DenoCacheEnv;
 use deno_cache_dir::GlobalHttpCache;
 use deno_cache_dir::GlobalToLocalCopy;
 use deno_cache_dir::HttpCache;
@@ -25,8 +24,8 @@ fn test_global_create_cache() {
   let cache_path = dir.path().join("foobar");
   // HttpCache should be created lazily on first use:
   // when zipping up a local project with no external dependencies
-  // "$DENO_DIR/deps" is empty. When unzipping such project
-  // "$DENO_DIR/deps" might not get restored and in situation
+  // "$DENO_DIR/remote" is empty. When unzipping such project
+  // "$DENO_DIR/remote" might not get restored and in situation
   // when directory is owned by root we might not be able
   // to create that directory. However if it's not needed it
   // doesn't make sense to return error in such specific scenarios.
@@ -94,31 +93,6 @@ fn test_global_get_set() {
     assert_eq!(err.expected, not_matching_checksum);
     assert_eq!(err.url, url);
   }
-}
-
-#[test]
-fn test_global_deno_1_x_metadata_existing() {
-  let dir = TempDir::new().unwrap();
-  let fs = TestRealDenoCacheEnv;
-  let cache_dir_path = dir.path().to_path_buf();
-  let cache = GlobalHttpCache::new(cache_dir_path.clone(), fs.clone());
-  // add the two files for deno 1.x
-  let deno_land_dir = cache_dir_path.join("https").join("deno.land");
-  let cached_file_path = deno_land_dir
-    .join("c565f9618e105d73fa1b5ffcbdae2b2e934d087839c2807aa83b4e60149adaf8");
-  fs.atomic_write_file(&cached_file_path, &[]).unwrap();
-  let metadata_file_path = cached_file_path.with_extension("metadata.json");
-  fs.atomic_write_file(&metadata_file_path, &[]).unwrap();
-  assert!(cached_file_path.exists());
-  assert!(metadata_file_path.exists());
-
-  let url = Url::parse("https://deno.land/x/welcome.ts").unwrap();
-  let key = cache.cache_item_key(&url).unwrap();
-  // checking if the cache entry exists will delete the Deno 1.x cache entry
-  let entry = cache.get(&key, None).unwrap();
-  assert!(!metadata_file_path.exists());
-  assert!(!cached_file_path.exists());
-  assert!(entry.is_none());
 }
 
 #[test]

@@ -26,10 +26,6 @@ export function create_dir_all(path) {
   Deno.mkdirSync(path, { recursive: true });
 }
 
-export function remove_file(path) {
-  Deno.removeSync(path);
-}
-
 export function atomic_write_file(path, bytes) {
   function parentPath(path) {
     const lastSlashIndex = path.lastIndexOf("/") ?? path.lastIndexOf("\\");
