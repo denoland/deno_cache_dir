@@ -28,7 +28,7 @@ export class DenoDir {
     options?: { vendorRoot?: string | URL; readOnly?: boolean },
   ): Promise<HttpCache> {
     return HttpCache.create({
-      root: join(this.root, "deps"),
+      root: join(this.root, "remote"),
       vendorRoot: options?.vendorRoot == null
         ? undefined
         : resolvePathOrUrl(options.vendorRoot),

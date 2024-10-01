@@ -10,7 +10,6 @@ pub trait DenoCacheEnv: Send + Sync + std::fmt::Debug + Clone {
     -> std::io::Result<()>;
   fn canonicalize_path(&self, path: &Path) -> std::io::Result<PathBuf>;
   fn create_dir_all(&self, path: &Path) -> std::io::Result<()>;
-  fn remove_file(&self, path: &Path) -> std::io::Result<()>;
   fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>>;
   fn is_file(&self, path: &Path) -> bool;
   fn time_now(&self) -> SystemTime;
@@ -58,10 +57,6 @@ mod test_fs {
 
     fn create_dir_all(&self, path: &Path) -> std::io::Result<()> {
       std::fs::create_dir_all(path)
-    }
-
-    fn remove_file(&self, path: &Path) -> std::io::Result<()> {
-      std::fs::remove_file(path)
     }
 
     fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>> {

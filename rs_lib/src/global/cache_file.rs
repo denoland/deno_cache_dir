@@ -45,25 +45,20 @@ pub fn write(
   Ok(())
 }
 
-pub enum ReadError {
-  Io(std::io::Error),
-  InvalidFormat,
-}
-
 pub fn read(
   env: &impl DenoCacheEnv,
   path: &Path,
-) -> Result<Option<CacheEntry>, ReadError> {
+) -> std::io::Result<Option<CacheEntry>> {
   let mut original_file_bytes = match env.read_file_bytes(path) {
     Ok(file) => file,
     Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-    Err(err) => return Err(ReadError::Io(err)),
+    Err(err) => return Err(err),
   };
 
   let Some((content, metadata)) =
     read_content_and_metadata(&original_file_bytes)
   else {
-    return Err(ReadError::InvalidFormat);
+    return Ok(None);
   };
 
   // truncate the original bytes to just the content
