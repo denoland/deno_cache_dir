@@ -112,8 +112,7 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
         url: url.to_string(),
         headers,
       },
-    )
-    .unwrap();
+    )?;
 
     Ok(())
   }
