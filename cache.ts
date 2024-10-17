@@ -27,7 +27,7 @@ export class FetchCacher {
           return undefined;
         }
 
-        throw new Error("FetchCacher#load failed", { cause: e });
+        throw e;
       });
   };
 }
