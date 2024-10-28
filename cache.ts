@@ -21,6 +21,13 @@ export class FetchCacher {
     checksum?: string,
   ): Promise<LoadResponse | undefined> => {
     const url = new URL(specifier);
-    return this.#fileFetcher.fetchOnce(url, { cacheSetting, checksum });
+    return this.#fileFetcher.fetchOnce(url, { cacheSetting, checksum })
+      .catch((e) => {
+        if (e instanceof Deno.errors.NotFound) {
+          return undefined;
+        }
+
+        throw e;
+      });
   };
 }
