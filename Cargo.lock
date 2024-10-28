@@ -93,7 +93,7 @@ checksum = "5c297a1c74b71ae29df00c3e22dd9534821d60eb9af5a0192823fa2acea70c2a"
 
 [[package]]
 name = "deno_cache_dir"
-version = "0.13.1"
+version = "0.13.2"
 dependencies = [
  "base32",
  "console_error_panic_hook",
