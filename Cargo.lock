@@ -87,9 +87,9 @@ dependencies = [
 
 [[package]]
 name = "data-url"
-version = "0.2.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d7439c3735f405729d52c3fbbe4de140eaf938a1fe47d227c27f8254d4302a5"
+checksum = "5c297a1c74b71ae29df00c3e22dd9534821d60eb9af5a0192823fa2acea70c2a"
 
 [[package]]
 name = "deno_cache_dir"
@@ -117,9 +117,9 @@ dependencies = [
 
 [[package]]
 name = "deno_media_type"
-version = "0.1.1"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "001d69b833ed4d244b608bab9c07069bfb570f631b763b58e73f82a020bf84ef"
+checksum = "7fcf552fbdedbe81c89705349d7d2485c7051382b000dfddbdbf7fc25931cf83"
 dependencies = [
  "data-url",
  "serde",
