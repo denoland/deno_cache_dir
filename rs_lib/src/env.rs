@@ -1,11 +1,12 @@
 // Copyright 2018-2024 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
 pub trait DenoCacheEnv: Send + Sync + std::fmt::Debug + Clone {
-  fn read_file_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>>;
+  fn read_file_bytes(&self, path: &Path) -> std::io::Result<Cow<'static, [u8]>>;
   fn atomic_write_file(&self, path: &Path, bytes: &[u8])
     -> std::io::Result<()>;
   fn canonicalize_path(&self, path: &Path) -> std::io::Result<PathBuf>;
@@ -22,7 +23,9 @@ pub use test_fs::TestRealDenoCacheEnv;
 #[allow(clippy::disallowed_methods)]
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod test_fs {
-  use super::*;
+  use std::borrow::Cow;
+
+use super::*;
 
   /// An implementation of `DenoCacheEnv` that uses the real file system, but
   /// doesn't have an implementation of atomic_write_file that is resilient.
@@ -32,8 +35,8 @@ mod test_fs {
   pub struct TestRealDenoCacheEnv;
 
   impl DenoCacheEnv for TestRealDenoCacheEnv {
-    fn read_file_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>> {
-      std::fs::read(path)
+    fn read_file_bytes(&self, path: &Path) -> std::io::Result<Cow<'static, [u8]>> {
+      std::fs::read(path).map(Cow::Owned)
     }
 
     fn atomic_write_file(

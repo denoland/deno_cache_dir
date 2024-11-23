@@ -341,9 +341,9 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
     match maybe_headers {
       Some(headers) => {
         let is_redirect = headers.contains_key("location");
-        let bytes = if is_redirect {
+        let bytes: Cow<'static, [u8]> = if is_redirect {
           // return back an empty file for redirect
-          Vec::new()
+          Cow::Borrowed(&[])
         } else {
           // if it's not a redirect, then it should have a file path
           let local_file_path =
@@ -628,7 +628,7 @@ impl<Env: DenoCacheEnv> LocalCacheManifest<Env> {
     let text = env
       .read_file_bytes(&file_path)
       .ok()
-      .and_then(|bytes| String::from_utf8(bytes).ok());
+      .and_then(|bytes| String::from_utf8(bytes.into_owned()).ok());
     Self {
       env,
       data: RwLock::new(manifest::LocalCacheManifestData::new(

@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::io::ErrorKind;
 use std::path::Path;
 
@@ -49,7 +50,7 @@ pub fn read(
   env: &impl DenoCacheEnv,
   path: &Path,
 ) -> std::io::Result<Option<CacheEntry>> {
-  let mut original_file_bytes = match env.read_file_bytes(path) {
+  let original_file_bytes = match env.read_file_bytes(path) {
     Ok(file) => file,
     Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
     Err(err) => return Err(err),
@@ -61,8 +62,15 @@ pub fn read(
     return Ok(None);
   };
 
+  let content_len = content.len();
   // truncate the original bytes to just the content
-  original_file_bytes.truncate(content.len());
+  let original_file_bytes = match original_file_bytes {
+      Cow::Borrowed(bytes) => Cow::Borrowed(&bytes[..content_len]),
+      Cow::Owned(mut bytes) => {
+        bytes.truncate(content_len);
+        Cow::Owned(bytes)
+      },
+  };
 
   Ok(Some(CacheEntry {
     metadata,
