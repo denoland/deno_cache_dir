@@ -4,7 +4,7 @@ import { FetchCacher } from "./cache.ts";
 import { DenoDir } from "./deno_dir.ts";
 import { FileFetcher } from "./file_fetcher.ts";
 import { createGraph } from "@deno/graph";
-import { assertEquals } from "@std/assert/assert-equals";
+import { assertEquals } from "@std/assert";
 
 async function setup() {
   const tempdir = await Deno.makeTempDir({
