@@ -26,6 +26,7 @@ pub use env::TestRealDenoCacheEnv;
 
 #[cfg(feature = "wasm")]
 pub mod wasm {
+  use std::borrow::Cow;
   use std::collections::HashMap;
   use std::io::ErrorKind;
   use std::path::Path;
@@ -67,13 +68,16 @@ pub mod wasm {
   struct WasmEnv;
 
   impl DenoCacheEnv for WasmEnv {
-    fn read_file_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+    fn read_file_bytes(
+      &self,
+      path: &Path,
+    ) -> std::io::Result<Cow<'static, [u8]>> {
       let js_value =
         read_file_bytes(&path.to_string_lossy()).map_err(js_to_io_error)?;
       if js_value.is_null() || js_value.is_undefined() {
         Err(std::io::Error::new(ErrorKind::NotFound, ""))
       } else {
-        Ok(js_sys::Uint8Array::from(js_value).to_vec())
+        Ok(Cow::Owned(js_sys::Uint8Array::from(js_value).to_vec()))
       }
     }
 
