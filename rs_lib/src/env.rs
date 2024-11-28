@@ -6,7 +6,8 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 
 pub trait DenoCacheEnv: Send + Sync + std::fmt::Debug + Clone {
-  fn read_file_bytes(&self, path: &Path) -> std::io::Result<Cow<'static, [u8]>>;
+  fn read_file_bytes(&self, path: &Path)
+    -> std::io::Result<Cow<'static, [u8]>>;
   fn atomic_write_file(&self, path: &Path, bytes: &[u8])
     -> std::io::Result<()>;
   fn canonicalize_path(&self, path: &Path) -> std::io::Result<PathBuf>;
@@ -25,7 +26,7 @@ pub use test_fs::TestRealDenoCacheEnv;
 mod test_fs {
   use std::borrow::Cow;
 
-use super::*;
+  use super::*;
 
   /// An implementation of `DenoCacheEnv` that uses the real file system, but
   /// doesn't have an implementation of atomic_write_file that is resilient.
@@ -35,7 +36,10 @@ use super::*;
   pub struct TestRealDenoCacheEnv;
 
   impl DenoCacheEnv for TestRealDenoCacheEnv {
-    fn read_file_bytes(&self, path: &Path) -> std::io::Result<Cow<'static, [u8]>> {
+    fn read_file_bytes(
+      &self,
+      path: &Path,
+    ) -> std::io::Result<Cow<'static, [u8]>> {
       std::fs::read(path).map(Cow::Owned)
     }
 

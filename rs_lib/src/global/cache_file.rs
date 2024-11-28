@@ -65,11 +65,11 @@ pub fn read(
   let content_len = content.len();
   // truncate the original bytes to just the content
   let original_file_bytes = match original_file_bytes {
-      Cow::Borrowed(bytes) => Cow::Borrowed(&bytes[..content_len]),
-      Cow::Owned(mut bytes) => {
-        bytes.truncate(content_len);
-        Cow::Owned(bytes)
-      },
+    Cow::Borrowed(bytes) => Cow::Borrowed(&bytes[..content_len]),
+    Cow::Owned(mut bytes) => {
+      bytes.truncate(content_len);
+      Cow::Owned(bytes)
+    }
   };
 
   Ok(Some(CacheEntry {
