@@ -428,6 +428,10 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
     }
   }
 
+  pub fn cache_setting(&self) -> &CacheSetting {
+    &self.cache_setting
+  }
+
   /// Fetch cached remote file.
   pub fn fetch_cached(
     &self,
@@ -476,7 +480,9 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
       let maybe_file = self.fetch_local(specifier)?;
       match maybe_file {
         Some(file) => Ok(FileOrRedirect::File(file)),
-        None => Err(FetchNoFollowErrorKind::NotFound(specifier.clone()).into_box()),
+        None => {
+          Err(FetchNoFollowErrorKind::NotFound(specifier.clone()).into_box())
+        }
       }
     } else if scheme == "data" {
       self
@@ -584,7 +590,10 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
   }
 
   /// Get a blob URL.
-  async fn fetch_blob_url(&self, specifier: &Url) -> Result<File, FetchNoFollowError> {
+  async fn fetch_blob_url(
+    &self,
+    specifier: &Url,
+  ) -> Result<File, FetchNoFollowError> {
     debug!("FileFetcher::fetch_blob_url() - specifier: {}", specifier);
     let blob = self
       .blob_store
@@ -664,8 +673,9 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
     {
       SendRequestResponse::NotModified => {
         let (cache_entry, _) = maybe_etag_cache_entry.unwrap();
-        FileOrRedirect::from_deno_cache_entry(specifier, cache_entry)
-          .map_err(|err| FetchNoFollowErrorKind::RedirectResolution(err).into_box())
+        FileOrRedirect::from_deno_cache_entry(specifier, cache_entry).map_err(
+          |err| FetchNoFollowErrorKind::RedirectResolution(err).into_box(),
+        )
       }
       SendRequestResponse::Redirect(redirect_url, headers) => {
         self
@@ -758,7 +768,7 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
 
     if let Some(etag) = args.maybe_etag {
       let if_none_match_val =
-        HeaderValue::from_str(&etag).map_err(|source| {
+        HeaderValue::from_str(etag).map_err(|source| {
           FetchNoFollowErrorKind::InvalidHeader {
             name: "etag",
             source,
@@ -777,7 +787,7 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
       headers.insert(header, value);
     }
     if let Some(accept) = args.maybe_accept {
-      let accepts_val = HeaderValue::from_str(&accept).map_err(|source| {
+      let accepts_val = HeaderValue::from_str(accept).map_err(|source| {
         FetchNoFollowErrorKind::InvalidHeader {
           name: "accept",
           source,
@@ -823,7 +833,10 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
   }
 
   /// Fetch a source file from the local file system.
-  pub fn fetch_local(&self, specifier: &Url) -> Result<Option<File>, FetchLocalError> {
+  pub fn fetch_local(
+    &self,
+    specifier: &Url,
+  ) -> Result<Option<File>, FetchLocalError> {
     let local = url_to_file_path(specifier)?;
     // If it doesnt have a extension, we want to treat it as typescript by default
     let headers = if local.extension().is_none() {
