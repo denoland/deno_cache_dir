@@ -137,9 +137,9 @@ pub enum SendResponse {
 
 #[derive(Debug)]
 pub enum SendError {
-  Io(std::io::Error),
+  Failed(Box<dyn std::error::Error + Send + Sync>),
   NotFound,
-  StatusCode { status_code: http::StatusCode },
+  StatusCode(http::StatusCode),
 }
 
 #[derive(Debug, Error, JsError)]
@@ -169,11 +169,37 @@ pub enum DataUrlDecodeSourceError {
   InvalidBase64(data_url::forgiving_base64::InvalidBase64),
 }
 
-#[derive(Debug, Boxed, JsError)]
-pub struct FetchError(pub Box<FetchErrorKind>);
+#[derive(Debug, Error, JsError)]
+#[class(generic)]
+#[error("Failed reading cache entry for '{specifier}'.")]
+pub struct CacheReadError {
+  pub specifier: Url,
+  #[source]
+  pub source: std::io::Error,
+}
+
+#[derive(Debug, Error)]
+#[error("Failed reading location header for '{}'", .request_url)]
+pub struct FailedReadingRedirectHeaderError {
+  pub request_url: Url,
+  #[source]
+  pub maybe_source: Option<header::ToStrError>,
+}
 
 #[derive(Debug, Error, JsError)]
-pub enum FetchErrorKind {
+#[class(generic)]
+#[error("Import '{specifier}' failed.")]
+pub struct FailedReadingLocalFileError {
+  pub specifier: Url,
+  #[source]
+  pub source: std::io::Error,
+}
+
+#[derive(Debug, Boxed, JsError)]
+pub struct FetchNoFollowError(pub Box<FetchNoFollowErrorKind>);
+
+#[derive(Debug, Error, JsError)]
+pub enum FetchNoFollowErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   UrlToFilePath(#[from] deno_path_util::UrlToFilePathError),
@@ -187,19 +213,15 @@ pub enum FetchErrorKind {
     #[source]
     source: std::io::Error,
   },
-  #[class(generic)]
-  #[error("Import '{specifier}' failed.")]
-  ReadingFile {
-    specifier: Url,
-    #[source]
-    source: std::io::Error,
-  },
+  #[class(inherit)]
+  #[error(transparent)]
+  ReadingFile(#[from] FailedReadingLocalFileError),
   #[class(generic)]
   #[error("Import '{specifier}' failed.")]
   FetchingRemote {
     specifier: Url,
     #[source]
-    source: std::io::Error,
+    source: Box<dyn std::error::Error + Send + Sync>,
   },
   #[class(generic)]
   #[error("Import '{specifier}' failed: {status_code}")]
@@ -220,14 +242,10 @@ pub enum FetchErrorKind {
   RedirectResolution(#[from] RedirectResolutionError),
   #[class(inherit)]
   #[error(transparent)]
-  ChecksumIntegrity(ChecksumIntegrityError),
-  #[class(generic)]
-  #[error("Failed reading cache entry for '{specifier}'.")]
-  CacheRead {
-    specifier: Url,
-    #[source]
-    source: std::io::Error,
-  },
+  ChecksumIntegrity(#[from] ChecksumIntegrityError),
+  #[class(inherit)]
+  #[error(transparent)]
+  CacheRead(#[from] CacheReadError),
   #[class(generic)]
   #[error("Failed caching '{specifier}'.")]
   CacheSave {
@@ -240,9 +258,6 @@ pub enum FetchErrorKind {
   #[class(type)]
   #[error("Unsupported scheme \"{scheme}\" for module \"{specifier}\". Supported schemes:\n - data:\n - blob:\n - file:\n - http:\n - https:\n - npm:\n - jsr:")]
   UnsupportedScheme { scheme: String, specifier: Url },
-  #[class("Http")]
-  #[error("Import '{0}' failed, too many redirects.")]
-  TooManyRedirects(Url),
   #[class(type)]
   #[error(transparent)]
   FailedReadingRedirectHeader(#[from] FailedReadingRedirectHeaderError),
@@ -258,7 +273,81 @@ pub enum FetchErrorKind {
   },
 }
 
-#[async_trait::async_trait]
+#[derive(Debug, Boxed, JsError)]
+pub struct FetchCachedError(pub Box<FetchCachedErrorKind>);
+
+#[derive(Debug, Error, JsError)]
+pub enum FetchCachedErrorKind {
+  #[class("Http")]
+  #[error("Import '{0}' failed, too many redirects.")]
+  TooManyRedirects(Url),
+  #[class(inherit)]
+  #[error(transparent)]
+  ChecksumIntegrity(#[from] ChecksumIntegrityError),
+  #[class(inherit)]
+  #[error(transparent)]
+  CacheRead(#[from] CacheReadError),
+  #[class(inherit)]
+  #[error(transparent)]
+  RedirectResolution(#[from] RedirectResolutionError),
+}
+
+#[derive(Debug, Boxed, JsError)]
+pub struct FetchLocalError(pub Box<FetchLocalErrorKind>);
+
+#[derive(Debug, Error, JsError)]
+pub enum FetchLocalErrorKind {
+  #[class(inherit)]
+  #[error(transparent)]
+  UrlToFilePath(#[from] deno_path_util::UrlToFilePathError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ReadingFile(#[from] FailedReadingLocalFileError),
+}
+
+impl From<FetchLocalError> for FetchNoFollowError {
+  fn from(err: FetchLocalError) -> Self {
+    match err.into_kind() {
+      FetchLocalErrorKind::UrlToFilePath(err) => err.into(),
+      FetchLocalErrorKind::ReadingFile(err) => err.into(),
+    }
+  }
+}
+
+#[derive(Debug, Boxed)]
+struct FetchCachedNoFollowError(pub Box<FetchCachedNoFollowErrorKind>);
+
+#[derive(Debug, Error)]
+enum FetchCachedNoFollowErrorKind {
+  #[error(transparent)]
+  ChecksumIntegrity(ChecksumIntegrityError),
+  #[error(transparent)]
+  CacheRead(#[from] CacheReadError),
+  #[error(transparent)]
+  RedirectResolution(#[from] RedirectResolutionError),
+}
+
+impl From<FetchCachedNoFollowError> for FetchCachedError {
+  fn from(err: FetchCachedNoFollowError) -> Self {
+    match err.into_kind() {
+      FetchCachedNoFollowErrorKind::ChecksumIntegrity(err) => err.into(),
+      FetchCachedNoFollowErrorKind::CacheRead(err) => err.into(),
+      FetchCachedNoFollowErrorKind::RedirectResolution(err) => err.into(),
+    }
+  }
+}
+
+impl From<FetchCachedNoFollowError> for FetchNoFollowError {
+  fn from(err: FetchCachedNoFollowError) -> Self {
+    match err.into_kind() {
+      FetchCachedNoFollowErrorKind::ChecksumIntegrity(err) => err.into(),
+      FetchCachedNoFollowErrorKind::CacheRead(err) => err.into(),
+      FetchCachedNoFollowErrorKind::RedirectResolution(err) => err.into(),
+    }
+  }
+}
+
+#[async_trait::async_trait(?Send)]
 pub trait HttpClient: std::fmt::Debug + Send + Sync {
   /// Send a request getting the response.
   ///
@@ -279,23 +368,17 @@ pub struct BlobData {
   pub bytes: Vec<u8>,
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 pub trait BlobStore: std::fmt::Debug + Send + Sync {
   async fn get(&self, specifier: &Url) -> std::io::Result<Option<BlobData>>;
 }
 
 #[derive(Debug, Default)]
-pub struct FetchOptions<'a> {
+pub struct FetchNoFollowOptions<'a> {
   pub maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
+  pub maybe_checksum: Option<Checksum<'a>>,
   pub maybe_accept: Option<&'a str>,
   pub maybe_cache_setting: Option<&'a CacheSetting>,
-}
-
-pub struct FetchNoFollowOptions<'a> {
-  pub fetch_options: FetchOptions<'a>,
-  /// This setting doesn't make sense to provide for `FetchOptions`
-  /// since the required checksum may change for a redirect.
-  pub maybe_checksum: Option<Checksum<'a>>,
 }
 
 #[derive(Debug)]
@@ -307,23 +390,29 @@ pub struct FileFetcherOptions {
 
 /// A structure for resolving, fetching and caching source files.
 #[derive(Debug)]
-pub struct FileFetcher<Env: DenoCacheEnv> {
-  blob_store: Arc<dyn BlobStore>,
-  env: Env,
+pub struct FileFetcher<
+  TBlobStore: BlobStore,
+  TEnv: DenoCacheEnv,
+  THttpClient: HttpClient,
+> {
+  blob_store: TBlobStore,
+  env: TEnv,
   http_cache: Arc<dyn HttpCache>,
-  http_client: Arc<dyn HttpClient>,
+  http_client: THttpClient,
   memory_files: Arc<dyn MemoryFiles>,
   allow_remote: bool,
   cache_setting: CacheSetting,
   auth_tokens: AuthTokens,
 }
 
-impl<Env: DenoCacheEnv> FileFetcher<Env> {
+impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
+  FileFetcher<TBlobStore, TEnv, THttpClient>
+{
   pub fn new(
-    blob_store: Arc<dyn BlobStore>,
-    env: Env,
+    blob_store: TBlobStore,
+    env: TEnv,
     http_cache: Arc<dyn HttpCache>,
-    http_client: Arc<dyn HttpClient>,
+    http_client: THttpClient,
     memory_files: Arc<dyn MemoryFiles>,
     options: FileFetcherOptions,
   ) -> Self {
@@ -340,13 +429,15 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
   }
 
   /// Fetch cached remote file.
-  ///
-  /// This is a recursive operation if source file has redirections.
   pub fn fetch_cached(
     &self,
     specifier: &Url,
     redirect_limit: i64,
-  ) -> Result<Option<File>, FetchError> {
+  ) -> Result<Option<File>, FetchCachedError> {
+    if !matches!(specifier.scheme(), "http" | "https") {
+      return Ok(None);
+    }
+
     let mut specifier = Cow::Borrowed(specifier);
     for _ in 0..=redirect_limit {
       match self.fetch_cached_no_follow(&specifier, None)? {
@@ -361,14 +452,72 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
         }
       }
     }
-    Err(FetchErrorKind::TooManyRedirects(specifier.into_owned()).into_box())
+    Err(
+      FetchCachedErrorKind::TooManyRedirects(specifier.into_owned()).into_box(),
+    )
+  }
+
+  /// Fetches without following redirects.
+  ///
+  /// You should verify permissions of the specifier before calling this function.
+  pub async fn fetch_no_follow(
+    &self,
+    specifier: &Url,
+    options: FetchNoFollowOptions<'_>,
+  ) -> Result<FileOrRedirect, FetchNoFollowError> {
+    // note: this debug output is used by the tests
+    debug!("FileFetcher::fetch_no_follow - specifier: {}", specifier);
+    let scheme = specifier.scheme();
+    if let Some(file) = self.memory_files.get(specifier) {
+      Ok(FileOrRedirect::File(file))
+    } else if scheme == "file" {
+      // we do not in memory cache files, as this would prevent files on the
+      // disk changing effecting things like workers and dynamic imports.
+      let maybe_file = self.fetch_local(specifier)?;
+      match maybe_file {
+        Some(file) => Ok(FileOrRedirect::File(file)),
+        None => Err(FetchNoFollowErrorKind::NotFound(specifier.clone()).into_box()),
+      }
+    } else if scheme == "data" {
+      self
+        .fetch_data_url(specifier)
+        .map(FileOrRedirect::File)
+        .map_err(|e| FetchNoFollowErrorKind::DataUrlDecode(e).into_box())
+    } else if scheme == "blob" {
+      self
+        .fetch_blob_url(specifier)
+        .await
+        .map(FileOrRedirect::File)
+    } else if scheme == "https" || scheme == "http" {
+      if !self.allow_remote {
+        Err(FetchNoFollowErrorKind::NoRemote(specifier.clone()).into_box())
+      } else {
+        self
+          .fetch_remote_no_follow(
+            specifier,
+            options.maybe_accept,
+            options.maybe_cache_setting.unwrap_or(&self.cache_setting),
+            options.maybe_checksum,
+            options.maybe_auth,
+          )
+          .await
+      }
+    } else {
+      Err(
+        FetchNoFollowErrorKind::UnsupportedScheme {
+          scheme: scheme.to_string(),
+          specifier: specifier.clone(),
+        }
+        .into_box(),
+      )
+    }
   }
 
   fn fetch_cached_no_follow(
     &self,
     specifier: &Url,
     maybe_checksum: Option<Checksum<'_>>,
-  ) -> Result<Option<FileOrRedirect>, FetchError> {
+  ) -> Result<Option<FileOrRedirect>, FetchCachedNoFollowError> {
     debug!(
       "FileFetcher::fetch_cached_no_follow - specifier: {}",
       specifier
@@ -378,7 +527,7 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
       self
         .http_cache
         .cache_item_key(specifier)
-        .map_err(|source| FetchErrorKind::CacheRead {
+        .map_err(|source| CacheReadError {
           specifier: specifier.clone(),
           source,
         })?;
@@ -388,14 +537,14 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
       )?)),
       Ok(None) => Ok(None),
       Err(CacheReadFileError::Io(source)) => Err(
-        FetchErrorKind::CacheRead {
+        FetchCachedNoFollowErrorKind::CacheRead(CacheReadError {
           specifier: specifier.clone(),
           source,
-        }
+        })
         .into_box(),
       ),
       Err(CacheReadFileError::ChecksumIntegrity(err)) => {
-        Err(FetchErrorKind::ChecksumIntegrity(*err).into_box())
+        Err(FetchCachedNoFollowErrorKind::ChecksumIntegrity(*err).into_box())
       }
     }
   }
@@ -435,17 +584,17 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
   }
 
   /// Get a blob URL.
-  async fn fetch_blob_url(&self, specifier: &Url) -> Result<File, FetchError> {
+  async fn fetch_blob_url(&self, specifier: &Url) -> Result<File, FetchNoFollowError> {
     debug!("FileFetcher::fetch_blob_url() - specifier: {}", specifier);
     let blob = self
       .blob_store
       .get(specifier)
       .await
-      .map_err(|err| FetchErrorKind::ReadingBlobUrl {
+      .map_err(|err| FetchNoFollowErrorKind::ReadingBlobUrl {
         specifier: specifier.clone(),
         source: err,
       })?
-      .ok_or_else(|| FetchErrorKind::NotFound(specifier.clone()))?;
+      .ok_or_else(|| FetchNoFollowErrorKind::NotFound(specifier.clone()))?;
 
     let headers =
       HashMap::from([("content-type".to_string(), blob.media_type.clone())]);
@@ -464,7 +613,7 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
     cache_setting: &CacheSetting,
     maybe_checksum: Option<Checksum<'_>>,
     maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
-  ) -> Result<FileOrRedirect, FetchError> {
+  ) -> Result<FileOrRedirect, FetchNoFollowError> {
     debug!(
       "FileFetcher::fetch_remote_no_follow - specifier: {}",
       specifier
@@ -480,7 +629,7 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
 
     if *cache_setting == CacheSetting::Only {
       return Err(
-        FetchErrorKind::NotCached {
+        FetchNoFollowErrorKind::NotCached {
           specifier: specifier.clone(),
         }
         .into_box(),
@@ -492,55 +641,54 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
       .cache_item_key(specifier)
       .ok()
       .and_then(|key| self.http_cache.get(&key, maybe_checksum).ok().flatten())
-      .and_then(|cache_entry| {
+      .and_then(|mut cache_entry| {
         cache_entry
           .metadata
           .headers
-          .get("etag")
-          .cloned()
+          .remove("etag")
           .map(|etag| (cache_entry, etag))
       });
 
     let maybe_auth_token = self.auth_tokens.get(specifier);
     match self
-      .fetch_no_follow(FetchOnceArgs {
+      .send_request(SendRequestArgs {
         url: specifier,
-        maybe_accept: maybe_accept.map(ToOwned::to_owned),
+        maybe_accept,
         maybe_auth: maybe_auth.clone(),
-        maybe_auth_token: maybe_auth_token.clone(),
+        maybe_auth_token,
         maybe_etag: maybe_etag_cache_entry
           .as_ref()
-          .map(|(_, etag)| etag.clone()),
+          .map(|(_, etag)| etag.as_str()),
       })
       .await?
     {
-      FetchOnceResult::NotModified => {
+      SendRequestResponse::NotModified => {
         let (cache_entry, _) = maybe_etag_cache_entry.unwrap();
         FileOrRedirect::from_deno_cache_entry(specifier, cache_entry)
-          .map_err(|err| FetchErrorKind::RedirectResolution(err).into_box())
+          .map_err(|err| FetchNoFollowErrorKind::RedirectResolution(err).into_box())
       }
-      FetchOnceResult::Redirect(redirect_url, headers) => {
+      SendRequestResponse::Redirect(redirect_url, headers) => {
         self
           .http_cache
           .set(specifier, headers, &[])
-          .map_err(|source| FetchErrorKind::CacheSave {
+          .map_err(|source| FetchNoFollowErrorKind::CacheSave {
             specifier: specifier.clone(),
             source,
           })?;
         Ok(FileOrRedirect::Redirect(redirect_url))
       }
-      FetchOnceResult::Code(bytes, headers) => {
+      SendRequestResponse::Code(bytes, headers) => {
         self
           .http_cache
           .set(specifier, headers.clone(), &bytes)
-          .map_err(|source| FetchErrorKind::CacheSave {
+          .map_err(|source| FetchNoFollowErrorKind::CacheSave {
             specifier: specifier.clone(),
             source,
           })?;
         if let Some(checksum) = &maybe_checksum {
           checksum
             .check(specifier, &bytes)
-            .map_err(|err| FetchErrorKind::ChecksumIntegrity(*err))?;
+            .map_err(|err| FetchNoFollowErrorKind::ChecksumIntegrity(*err))?;
         }
         Ok(FileOrRedirect::File(File {
           specifier: specifier.clone(),
@@ -597,132 +745,21 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
     }
   }
 
-  /// Fetch a source file and asynchronously return it.
-  #[inline(always)]
-  pub async fn fetch(&self, specifier: &Url) -> Result<File, FetchError> {
-    self.fetch_with_options(specifier, Default::default()).await
-  }
-
-  #[inline(always)]
-  pub async fn fetch_with_options(
-    &self,
-    specifier: &Url,
-    options: FetchOptions<'_>,
-  ) -> Result<File, FetchError> {
-    self
-      .fetch_with_options_and_max_redirect(specifier, options, 10)
-      .await
-  }
-
-  async fn fetch_with_options_and_max_redirect(
-    &self,
-    specifier: &Url,
-    options: FetchOptions<'_>,
-    max_redirect: usize,
-  ) -> Result<File, FetchError> {
-    let mut specifier = Cow::Borrowed(specifier);
-    let mut maybe_auth = options.maybe_auth.clone();
-    for _ in 0..=max_redirect {
-      match self
-        .fetch_no_follow_with_options(
-          &specifier,
-          FetchNoFollowOptions {
-            fetch_options: FetchOptions {
-              maybe_auth: maybe_auth.clone(),
-              maybe_accept: options.maybe_accept,
-              maybe_cache_setting: options.maybe_cache_setting,
-            },
-            maybe_checksum: None,
-          },
-        )
-        .await?
-      {
-        FileOrRedirect::File(file) => {
-          return Ok(file);
-        }
-        FileOrRedirect::Redirect(redirect_specifier) => {
-          // If we were redirected to another origin, don't send the auth header anymore.
-          if redirect_specifier.origin() != specifier.origin() {
-            maybe_auth = None;
-          }
-          specifier = Cow::Owned(redirect_specifier);
-        }
-      }
-    }
-
-    Err(FetchErrorKind::TooManyRedirects(specifier.into_owned()).into_box())
-  }
-
-  /// Fetches without following redirects.
-  pub async fn fetch_no_follow_with_options(
-    &self,
-    specifier: &Url,
-    options: FetchNoFollowOptions<'_>,
-  ) -> Result<FileOrRedirect, FetchError> {
-    let maybe_checksum = options.maybe_checksum;
-    let options = options.fetch_options;
-    // note: this debug output is used by the tests
-    debug!(
-      "FileFetcher::fetch_no_follow_with_options - specifier: {}",
-      specifier
-    );
-    let scheme = specifier.scheme();
-    if let Some(file) = self.memory_files.get(specifier) {
-      Ok(FileOrRedirect::File(file))
-    } else if scheme == "file" {
-      // we do not in memory cache files, as this would prevent files on the
-      // disk changing effecting things like workers and dynamic imports.
-      self.fetch_local(specifier).map(FileOrRedirect::File)
-    } else if scheme == "data" {
-      self
-        .fetch_data_url(specifier)
-        .map(FileOrRedirect::File)
-        .map_err(|e| FetchErrorKind::DataUrlDecode(e).into_box())
-    } else if scheme == "blob" {
-      self
-        .fetch_blob_url(specifier)
-        .await
-        .map(FileOrRedirect::File)
-    } else if scheme == "https" || scheme == "http" {
-      if !self.allow_remote {
-        Err(FetchErrorKind::NoRemote(specifier.clone()).into_box())
-      } else {
-        self
-          .fetch_remote_no_follow(
-            specifier,
-            options.maybe_accept,
-            options.maybe_cache_setting.unwrap_or(&self.cache_setting),
-            maybe_checksum,
-            options.maybe_auth,
-          )
-          .await
-      }
-    } else {
-      Err(
-        FetchErrorKind::UnsupportedScheme {
-          scheme: scheme.to_string(),
-          specifier: specifier.clone(),
-        }
-        .into_box(),
-      )
-    }
-  }
-
   /// Asynchronously fetches the given HTTP URL one pass only.
   /// If no redirect is present and no error occurs,
   /// yields Code(ResultPayload).
   /// If redirect occurs, does not follow and
   /// yields Redirect(url).
-  async fn fetch_no_follow<'a>(
+  async fn send_request<'a>(
     &self,
-    args: FetchOnceArgs<'a>,
-  ) -> Result<FetchOnceResult, FetchError> {
-    let mut headers = HeaderMap::new();
+    args: SendRequestArgs<'a>,
+  ) -> Result<SendRequestResponse, FetchNoFollowError> {
+    let mut headers = HeaderMap::with_capacity(3);
 
     if let Some(etag) = args.maybe_etag {
       let if_none_match_val =
         HeaderValue::from_str(&etag).map_err(|source| {
-          FetchErrorKind::InvalidHeader {
+          FetchNoFollowErrorKind::InvalidHeader {
             name: "etag",
             source,
           }
@@ -731,7 +768,7 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
     }
     if let Some(auth_token) = args.maybe_auth_token {
       let authorization_val = HeaderValue::from_str(&auth_token.to_string())
-        .map_err(|source| FetchErrorKind::InvalidHeader {
+        .map_err(|source| FetchNoFollowErrorKind::InvalidHeader {
           name: "authorization",
           source,
         })?;
@@ -741,7 +778,7 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
     }
     if let Some(accept) = args.maybe_accept {
       let accepts_val = HeaderValue::from_str(&accept).map_err(|source| {
-        FetchErrorKind::InvalidHeader {
+        FetchNoFollowErrorKind::InvalidHeader {
           name: "accept",
           source,
         }
@@ -750,32 +787,32 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
     }
     match self.http_client.send_no_follow(args.url, headers).await {
       Ok(resp) => match resp {
-        SendResponse::NotModified => Ok(FetchOnceResult::NotModified),
+        SendResponse::NotModified => Ok(SendRequestResponse::NotModified),
         SendResponse::Redirect(headers) => {
           let new_url = resolve_redirect_from_response(args.url, &headers)?;
-          Ok(FetchOnceResult::Redirect(
+          Ok(SendRequestResponse::Redirect(
             new_url,
-            response_headers_to_headers_map(&headers),
+            response_headers_to_headers_map(headers),
           ))
         }
-        SendResponse::Success(headers, body) => Ok(FetchOnceResult::Code(
+        SendResponse::Success(headers, body) => Ok(SendRequestResponse::Code(
           body,
-          response_headers_to_headers_map(&headers),
+          response_headers_to_headers_map(headers),
         )),
       },
       Err(err) => match err {
-        SendError::Io(err) => Err(
-          FetchErrorKind::FetchingRemote {
+        SendError::Failed(err) => Err(
+          FetchNoFollowErrorKind::FetchingRemote {
             specifier: args.url.clone(),
             source: err,
           }
           .into_box(),
         ),
         SendError::NotFound => {
-          Err(FetchErrorKind::NotFound(args.url.clone()).into_box())
+          Err(FetchNoFollowErrorKind::NotFound(args.url.clone()).into_box())
         }
-        SendError::StatusCode { status_code } => Err(
-          FetchErrorKind::ClientError {
+        SendError::StatusCode(status_code) => Err(
+          FetchNoFollowErrorKind::ClientError {
             specifier: args.url.clone(),
             status_code,
           }
@@ -786,7 +823,7 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
   }
 
   /// Fetch a source file from the local file system.
-  fn fetch_local(&self, specifier: &Url) -> Result<File, FetchError> {
+  pub fn fetch_local(&self, specifier: &Url) -> Result<Option<File>, FetchLocalError> {
     let local = url_to_file_path(specifier)?;
     // If it doesnt have a extension, we want to treat it as typescript by default
     let headers = if local.extension().is_none() {
@@ -800,29 +837,30 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
     let bytes = match self.env.read_file_bytes(&local) {
       Ok(bytes) => bytes,
       Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-        return Err(FetchErrorKind::NotFound(specifier.clone()).into_box());
+        return Ok(None);
       }
       Err(err) => {
         return Err(
-          FetchErrorKind::ReadingFile {
+          FetchLocalErrorKind::ReadingFile(FailedReadingLocalFileError {
             specifier: specifier.clone(),
             source: err,
-          }
+          })
           .into_box(),
         );
       }
     };
 
-    Ok(File {
+    Ok(Some(File {
       specifier: specifier.clone(),
       maybe_headers: headers,
       source: bytes.into(),
-    })
+    }))
   }
 }
 
-fn response_headers_to_headers_map(response_headers: &HeaderMap) -> HeadersMap {
+fn response_headers_to_headers_map(response_headers: HeaderMap) -> HeadersMap {
   let mut result_headers = HashMap::with_capacity(response_headers.len());
+  // todo(THIS PR): change to consume to avoid allocations
   for key in response_headers.keys() {
     let key_str = key.to_string();
     let values = response_headers.get_all(key);
@@ -836,14 +874,6 @@ fn response_headers_to_headers_map(response_headers: &HeaderMap) -> HeadersMap {
     result_headers.insert(key_str, values_str);
   }
   result_headers
-}
-
-#[derive(Debug, Error)]
-#[error("Failed reading location header for '{}'", .request_url)]
-pub struct FailedReadingRedirectHeaderError {
-  pub request_url: Url,
-  #[source]
-  pub maybe_source: Option<header::ToStrError>,
 }
 
 fn resolve_redirect_from_response(
@@ -896,18 +926,18 @@ fn resolve_url_from_location(base_url: &Url, location: &str) -> Url {
   }
 }
 
+#[derive(Debug)]
+struct SendRequestArgs<'a> {
+  pub url: &'a Url,
+  pub maybe_accept: Option<&'a str>,
+  pub maybe_etag: Option<&'a str>,
+  pub maybe_auth_token: Option<&'a AuthToken>,
+  pub maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
+}
+
 #[derive(Debug, Eq, PartialEq)]
-enum FetchOnceResult {
+enum SendRequestResponse {
   Code(Vec<u8>, HeadersMap),
   NotModified,
   Redirect(Url, HeadersMap),
-}
-
-#[derive(Debug)]
-struct FetchOnceArgs<'a> {
-  pub url: &'a Url,
-  pub maybe_accept: Option<String>,
-  pub maybe_etag: Option<String>,
-  pub maybe_auth_token: Option<AuthToken>,
-  pub maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
 }

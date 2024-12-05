@@ -158,10 +158,10 @@ impl AuthTokens {
   /// scheme.  For example `https://www.deno.land:8080/` would match a token
   /// with a host value of `deno.land:8080` but not match `www.deno.land`.  The
   /// matching is case insensitive.
-  pub fn get(&self, specifier: &Url) -> Option<AuthToken> {
+  pub fn get(&self, specifier: &Url) -> Option<&AuthToken> {
     self.0.iter().find_map(|t| {
       if t.host.matches(specifier) {
-        Some(t.clone())
+        Some(t)
       } else {
         None
       }
