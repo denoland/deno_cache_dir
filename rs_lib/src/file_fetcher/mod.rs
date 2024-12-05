@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use boxed_error::Boxed;
 use data_url::DataUrl;
+use deno_error::JsError;
 use deno_media_type::MediaType;
 use deno_path_util::url_to_file_path;
 use http::header;
@@ -141,7 +142,8 @@ pub enum SendError {
   StatusCode { status_code: http::StatusCode },
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
+#[class(generic)]
 #[error("Failed resolving redirect from '{specifier}' to '{location}'.")]
 pub struct RedirectResolutionError {
   pub specifier: Url,
@@ -150,14 +152,16 @@ pub struct RedirectResolutionError {
   pub source: url::ParseError,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
+#[class(uri)]
 #[error("Unable to decode data url.")]
 pub struct DataUrlDecodeError {
   #[source]
   source: DataUrlDecodeSourceError,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
+#[class(uri)]
 pub enum DataUrlDecodeSourceError {
   #[error(transparent)]
   DataUrl(data_url::DataUrlError),
@@ -165,74 +169,87 @@ pub enum DataUrlDecodeSourceError {
   InvalidBase64(data_url::forgiving_base64::InvalidBase64),
 }
 
-#[derive(Debug, Boxed)]
+#[derive(Debug, Boxed, JsError)]
 pub struct FetchError(pub Box<FetchErrorKind>);
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
 pub enum FetchErrorKind {
+  #[class(inherit)]
   #[error(transparent)]
   UrlToFilePath(#[from] deno_path_util::UrlToFilePathError),
+  #[class("NotFound")]
   #[error("Import '{0}' failed, not found.")]
   NotFound(Url),
+  #[class(generic)]
   #[error("Import '{specifier}' failed.")]
   ReadingBlobUrl {
     specifier: Url,
     #[source]
     source: std::io::Error,
   },
+  #[class(generic)]
   #[error("Import '{specifier}' failed.")]
   ReadingFile {
     specifier: Url,
     #[source]
     source: std::io::Error,
   },
+  #[class(generic)]
   #[error("Import '{specifier}' failed.")]
   FetchingRemote {
     specifier: Url,
     #[source]
     source: std::io::Error,
   },
+  #[class(generic)]
   #[error("Import '{specifier}' failed: {status_code}")]
   ClientError {
     specifier: Url,
     status_code: http::StatusCode,
   },
-  // todo: name is "NoRemote",
+  #[class("NoRemote")]
   #[error(
     "A remote specifier was requested: \"{0}\", but --no-remote is specified."
   )]
   NoRemote(Url),
+  #[class(inherit)]
   #[error(transparent)]
   DataUrlDecode(DataUrlDecodeError),
+  #[class(inherit)]
   #[error(transparent)]
   RedirectResolution(#[from] RedirectResolutionError),
+  #[class(inherit)]
   #[error(transparent)]
   ChecksumIntegrity(ChecksumIntegrityError),
+  #[class(generic)]
   #[error("Failed reading cache entry for '{specifier}'.")]
   CacheRead {
     specifier: Url,
     #[source]
     source: std::io::Error,
   },
+  #[class(generic)]
   #[error("Failed caching '{specifier}'.")]
   CacheSave {
     specifier: Url,
     #[source]
     source: std::io::Error,
   },
-  // todo: "GenericError"
   // this message list additional `npm` and `jsr` schemes, but they should actually be handled
   // before `file_fetcher.rs` APIs are even hit.
+  #[class(type)]
   #[error("Unsupported scheme \"{scheme}\" for module \"{specifier}\". Supported schemes:\n - data:\n - blob:\n - file:\n - http:\n - https:\n - npm:\n - jsr:")]
   UnsupportedScheme { scheme: String, specifier: Url },
-  // todo: "Http"
+  #[class("Http")]
   #[error("Import '{0}' failed, too many redirects.")]
   TooManyRedirects(Url),
+  #[class(type)]
   #[error(transparent)]
-  NoRedirectHeaderError(#[from] NoRedirectHeaderError),
-  // todo: "NotCached"
+  FailedReadingRedirectHeader(#[from] FailedReadingRedirectHeaderError),
+  #[class("NotCached")]
   #[error("Specifier not found in cache: \"{specifier}\", --cached-only is specified.")]
   NotCached { specifier: Url },
+  #[class(type)]
   #[error("Failed setting header '{name}'.")]
   InvalidHeader {
     name: &'static str,
@@ -243,7 +260,13 @@ pub enum FetchErrorKind {
 
 #[async_trait::async_trait]
 pub trait HttpClient: std::fmt::Debug + Send + Sync {
-  async fn send(
+  /// Send a request getting the response.
+  /// 
+  /// The implementation MUST not follow redirects. Return `SendResponse::Redirect`
+  /// in that case.
+  /// 
+  /// The implementation may retry the request on failure.
+  async fn send_no_follow(
     &self,
     url: &Url,
     headers: HeaderMap,
@@ -580,6 +603,7 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
     self.fetch_with_options(specifier, Default::default()).await
   }
 
+  #[inline(always)]
   pub async fn fetch_with_options(
     &self,
     specifier: &Url,
@@ -724,7 +748,7 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
       })?;
       headers.insert(ACCEPT, accepts_val);
     }
-    match self.http_client.send(args.url, headers).await {
+    match self.http_client.send_no_follow(args.url, headers).await {
       Ok(resp) => match resp {
         SendResponse::NotModified => Ok(FetchOnceResult::NotModified),
         SendResponse::Redirect(headers) => {
@@ -815,8 +839,8 @@ fn response_headers_to_headers_map(response_headers: &HeaderMap) -> HeadersMap {
 }
 
 #[derive(Debug, Error)]
-#[error("Redirection from '{}' did not provide location header", .request_url)]
-pub struct NoRedirectHeaderError {
+#[error("Failed reading location header for '{}'", .request_url)]
+pub struct FailedReadingRedirectHeaderError {
   pub request_url: Url,
   #[source]
   pub maybe_source: Option<header::ToStrError>,
@@ -825,10 +849,10 @@ pub struct NoRedirectHeaderError {
 fn resolve_redirect_from_response(
   request_url: &Url,
   headers: &HeaderMap,
-) -> Result<Url, NoRedirectHeaderError> {
+) -> Result<Url, FailedReadingRedirectHeaderError> {
   if let Some(location) = headers.get(LOCATION) {
     let location_string =
-      location.to_str().map_err(|source| NoRedirectHeaderError {
+      location.to_str().map_err(|source| FailedReadingRedirectHeaderError {
         request_url: request_url.clone(),
         maybe_source: Some(source),
       })?;
@@ -836,7 +860,7 @@ fn resolve_redirect_from_response(
     let new_url = resolve_url_from_location(request_url, location_string);
     Ok(new_url)
   } else {
-    Err(NoRedirectHeaderError {
+    Err(FailedReadingRedirectHeaderError {
       request_url: request_url.clone(),
       maybe_source: None,
     })

@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. MIT license.
 
+use deno_error::JsError;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -32,7 +33,8 @@ impl GlobalToLocalCopy {
   }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
+#[class(type)]
 #[error("Integrity check failed for {}\n\nActual: {}\nExpected: {}", .url, .actual, .expected)]
 pub struct ChecksumIntegrityError {
   pub url: Url,

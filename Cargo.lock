@@ -152,6 +152,7 @@ dependencies = [
  "chrono",
  "console_error_panic_hook",
  "data-url",
+ "deno_error",
  "deno_media_type",
  "deno_path_util",
  "http",
