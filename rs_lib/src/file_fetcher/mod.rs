@@ -261,10 +261,10 @@ pub enum FetchErrorKind {
 #[async_trait::async_trait]
 pub trait HttpClient: std::fmt::Debug + Send + Sync {
   /// Send a request getting the response.
-  /// 
+  ///
   /// The implementation MUST not follow redirects. Return `SendResponse::Redirect`
   /// in that case.
-  /// 
+  ///
   /// The implementation may retry the request on failure.
   async fn send_no_follow(
     &self,
@@ -852,10 +852,12 @@ fn resolve_redirect_from_response(
 ) -> Result<Url, FailedReadingRedirectHeaderError> {
   if let Some(location) = headers.get(LOCATION) {
     let location_string =
-      location.to_str().map_err(|source| FailedReadingRedirectHeaderError {
-        request_url: request_url.clone(),
-        maybe_source: Some(source),
-      })?;
+      location
+        .to_str()
+        .map_err(|source| FailedReadingRedirectHeaderError {
+          request_url: request_url.clone(),
+          maybe_source: Some(source),
+        })?;
     log::debug!("Redirecting to {:?}...", &location_string);
     let new_url = resolve_url_from_location(request_url, location_string);
     Ok(new_url)
