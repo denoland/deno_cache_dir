@@ -51,6 +51,19 @@ impl<'a> Checksum<'a> {
   pub fn as_str(&self) -> &str {
     self.0
   }
+
+  pub fn check(&self, url: &Url, content: &[u8]) -> Result<(), ChecksumIntegrityError> {
+    let actual = checksum(content);
+    if self.as_str() != actual {
+      Err(ChecksumIntegrityError {
+        url: url.clone(),
+        expected: self.as_str().to_string(),
+        actual,
+      })
+    } else {
+      Ok(())
+    }
+  }
 }
 
 /// Turn provided `url` into a hashed filename.

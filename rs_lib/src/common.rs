@@ -5,6 +5,9 @@ use std::collections::HashMap;
 
 use url::Url;
 
+// TODO(ry) HTTP headers are not unique key, value pairs. There may be more than
+// one header line with the same key. This should be changed to something like
+// Vec<(String, String)>
 pub type HeadersMap = HashMap<String, String>;
 
 pub fn base_url_to_filename_parts<'a>(
