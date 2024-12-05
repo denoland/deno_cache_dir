@@ -52,14 +52,18 @@ impl<'a> Checksum<'a> {
     self.0
   }
 
-  pub fn check(&self, url: &Url, content: &[u8]) -> Result<(), ChecksumIntegrityError> {
+  pub fn check(
+    &self,
+    url: &Url,
+    content: &[u8],
+  ) -> Result<(), Box<ChecksumIntegrityError>> {
     let actual = checksum(content);
     if self.as_str() != actual {
-      Err(ChecksumIntegrityError {
+      Err(Box::new(ChecksumIntegrityError {
         url: url.clone(),
         expected: self.as_str().to_string(),
         actual,
-      })
+      }))
     } else {
       Ok(())
     }

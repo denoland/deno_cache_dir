@@ -188,8 +188,7 @@ mod tests {
     );
     let fixture = Url::parse("http://127.0.0.1:8080/x/mod.ts").unwrap();
     assert_eq!(auth_tokens.get(&fixture), None);
-    let fixture =
-      Url::parse("https://deno.land.example.com/x/mod.ts").unwrap();
+    let fixture = Url::parse("https://deno.land.example.com/x/mod.ts").unwrap();
     assert_eq!(auth_tokens.get(&fixture), None);
     let fixture = Url::parse("https://deno.land:8080/x/mod.ts").unwrap();
     assert_eq!(auth_tokens.get(&fixture), None);
@@ -283,8 +282,7 @@ mod tests {
     );
     let fixture = Url::parse("http://127.0.0.1:8080/x/mod.ts").unwrap();
     assert_eq!(auth_tokens.get(&fixture), None);
-    let fixture =
-      Url::parse("https://deno.land.example.com/x/mod.ts").unwrap();
+    let fixture = Url::parse("https://deno.land.example.com/x/mod.ts").unwrap();
     assert_eq!(auth_tokens.get(&fixture), None);
     let fixture = Url::parse("https://deno.land:8080/x/mod.ts").unwrap();
     assert_eq!(auth_tokens.get(&fixture), None);
@@ -303,12 +301,8 @@ mod tests {
   #[test]
   fn test_case_insensitive() {
     let domain = AuthDomain::from("EXAMPLE.com");
-    assert!(
-      domain.matches(&Url::parse("http://example.com").unwrap())
-    );
-    assert!(
-      domain.matches(&Url::parse("http://example.COM").unwrap())
-    );
+    assert!(domain.matches(&Url::parse("http://example.com").unwrap()));
+    assert!(domain.matches(&Url::parse("http://example.COM").unwrap()));
   }
 
   #[test]
@@ -332,8 +326,7 @@ mod tests {
       ("[2001:db8:a::123]", vec!["[2001:db8:a::123]"]),
     ];
     let url = |c: &str| Url::parse(&format!("http://{c}")).unwrap();
-    let url_port =
-      |c: &str| Url::parse(&format!("http://{c}:8080")).unwrap();
+    let url_port = |c: &str| Url::parse(&format!("http://{c}:8080")).unwrap();
 
     // Generate each candidate with and without a port
     let candidates = candidates

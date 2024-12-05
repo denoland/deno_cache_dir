@@ -1,16 +1,12 @@
 // Copyright 2018-2024 the Deno authors. MIT license.
 
-#[cfg(feature = "file_fetcher")]
-mod auth_tokens;
 mod cache;
 mod common;
 mod env;
 #[cfg(feature = "file_fetcher")]
-mod file_fetcher;
+pub mod file_fetcher;
 mod global;
 mod local;
-#[cfg(feature = "file_fetcher")]
-mod http_util;
 pub mod npm;
 
 pub use cache::url_to_filename;

@@ -4,7 +4,6 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::SystemTime;
 
 use boxed_error::Boxed;
 use data_url::DataUrl;
@@ -21,15 +20,22 @@ use log::debug;
 use thiserror::Error;
 use url::Url;
 
-use crate::auth_tokens::AuthToken;
-use crate::auth_tokens::AuthTokens;
+use self::http_util::CacheSemantics;
 use crate::common::HeadersMap;
-use crate::http_util::CacheSemantics;
 use crate::CacheEntry;
+use crate::CacheReadFileError;
 use crate::Checksum;
 use crate::ChecksumIntegrityError;
 use crate::DenoCacheEnv;
 use crate::HttpCache;
+
+mod auth_tokens;
+mod http_util;
+
+pub use auth_tokens::AuthDomain;
+pub use auth_tokens::AuthToken;
+pub use auth_tokens::AuthTokenData;
+pub use auth_tokens::AuthTokens;
 
 /// Indicates how cached source files should be handled.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -65,10 +71,12 @@ impl FileOrRedirect {
     cache_entry: CacheEntry,
   ) -> Result<Self, RedirectResolutionError> {
     if let Some(redirect_to) = cache_entry.metadata.headers.get("location") {
-      let redirect = specifier.join(redirect_to).map_err(|source| RedirectResolutionError {
-        specifier: specifier.clone(),
-        location: redirect_to.clone(),
-        source,
+      let redirect = specifier.join(redirect_to).map_err(|source| {
+        RedirectResolutionError {
+          specifier: specifier.clone(),
+          location: redirect_to.clone(),
+          source,
+        }
       })?;
       Ok(FileOrRedirect::Redirect(redirect))
     } else {
@@ -96,7 +104,9 @@ impl File {
   pub fn resolve_media_type_and_charset(&self) -> (MediaType, Option<&str>) {
     deno_media_type::resolve_media_type_and_charset_from_content_type(
       &self.specifier,
-      self.maybe_headers.as_ref()
+      self
+        .maybe_headers
+        .as_ref()
         .and_then(|h| h.get("content-type"))
         .map(|v| v.as_str()),
     )
@@ -107,8 +117,9 @@ pub trait MemoryFiles: std::fmt::Debug + Send + Sync {
   fn get(&self, specifier: &Url) -> Option<File>;
 }
 
+/// Implementation of `MemoryFiles` that always returns `None`.
 #[derive(Debug, Clone, Default)]
-struct NullMemoryFiles;
+pub struct NullMemoryFiles;
 
 impl MemoryFiles for NullMemoryFiles {
   fn get(&self, _specifier: &Url) -> Option<File> {
@@ -127,9 +138,7 @@ pub enum SendResponse {
 pub enum SendError {
   Io(std::io::Error),
   NotFound,
-  StatusCode {
-    status_code: http::StatusCode,
-  },
+  StatusCode { status_code: http::StatusCode },
 }
 
 #[derive(Debug, Error)]
@@ -153,7 +162,7 @@ pub enum DataUrlDecodeSourceError {
   #[error(transparent)]
   DataUrl(data_url::DataUrlError),
   #[error(transparent)]
-  InvalidBase64(data_url::forgiving_base64::InvalidBase64)
+  InvalidBase64(data_url::forgiving_base64::InvalidBase64),
 }
 
 #[derive(Debug, Boxed)]
@@ -189,14 +198,22 @@ pub enum FetchErrorKind {
     status_code: http::StatusCode,
   },
   // todo: name is "NoRemote",
-  #[error("A remote specifier was requested: \"{0}\", but --no-remote is specified.")]
+  #[error(
+    "A remote specifier was requested: \"{0}\", but --no-remote is specified."
+  )]
   NoRemote(Url),
   #[error(transparent)]
   DataUrlDecode(DataUrlDecodeError),
   #[error(transparent)]
   RedirectResolution(#[from] RedirectResolutionError),
   #[error(transparent)]
-  ChecksumIntegrity(#[from] ChecksumIntegrityError),
+  ChecksumIntegrity(ChecksumIntegrityError),
+  #[error("Failed reading cache entry for '{specifier}'.")]
+  CacheRead {
+    specifier: Url,
+    #[source]
+    source: std::io::Error,
+  },
   #[error("Failed caching '{specifier}'.")]
   CacheSave {
     specifier: Url,
@@ -207,10 +224,7 @@ pub enum FetchErrorKind {
   // this message list additional `npm` and `jsr` schemes, but they should actually be handled
   // before `file_fetcher.rs` APIs are even hit.
   #[error("Unsupported scheme \"{scheme}\" for module \"{specifier}\". Supported schemes:\n - data:\n - blob:\n - file:\n - http:\n - https:\n - npm:\n - jsr:")]
-  UnsupportedScheme {
-    scheme: String,
-    specifier: Url,
-  },
+  UnsupportedScheme { scheme: String, specifier: Url },
   // todo: "Http"
   #[error("Import '{0}' failed, too many redirects.")]
   TooManyRedirects(Url),
@@ -218,9 +232,7 @@ pub enum FetchErrorKind {
   NoRedirectHeaderError(#[from] NoRedirectHeaderError),
   // todo: "NotCached"
   #[error("Specifier not found in cache: \"{specifier}\", --cached-only is specified.")]
-  NotCached {
-    specifier: Url,
-  },
+  NotCached { specifier: Url },
   #[error("Failed setting header '{name}'.")]
   InvalidHeader {
     name: &'static str,
@@ -231,7 +243,11 @@ pub enum FetchErrorKind {
 
 #[async_trait::async_trait]
 pub trait HttpClient: std::fmt::Debug + Send + Sync {
-  async fn send(&self, url: &Url, headers: HeaderMap) -> Result<SendResponse, SendError>;
+  async fn send(
+    &self,
+    url: &Url,
+    headers: HeaderMap,
+  ) -> Result<SendResponse, SendError>;
 }
 
 #[derive(Debug, Clone)]
@@ -259,39 +275,44 @@ pub struct FetchNoFollowOptions<'a> {
   pub maybe_checksum: Option<Checksum<'a>>,
 }
 
+#[derive(Debug)]
+pub struct FileFetcherOptions {
+  pub allow_remote: bool,
+  pub cache_setting: CacheSetting,
+  pub auth_tokens: AuthTokens,
+}
+
 /// A structure for resolving, fetching and caching source files.
 #[derive(Debug)]
 pub struct FileFetcher<Env: DenoCacheEnv> {
-  allow_remote: bool,
-  cache_setting: CacheSetting,
-  auth_tokens: AuthTokens,
-  memory_files: Arc<dyn MemoryFiles>,
   blob_store: Arc<dyn BlobStore>,
   env: Env,
   http_cache: Arc<dyn HttpCache>,
   http_client: Arc<dyn HttpClient>,
+  memory_files: Arc<dyn MemoryFiles>,
+  allow_remote: bool,
+  cache_setting: CacheSetting,
+  auth_tokens: AuthTokens,
 }
 
 impl<Env: DenoCacheEnv> FileFetcher<Env> {
   pub fn new(
-    auth_tokens: AuthTokens,
-    cache_setting: CacheSetting,
-    allow_remote: bool,
     blob_store: Arc<dyn BlobStore>,
     env: Env,
     http_cache: Arc<dyn HttpCache>,
     http_client: Arc<dyn HttpClient>,
     memory_files: Arc<dyn MemoryFiles>,
+    options: FileFetcherOptions,
   ) -> Self {
     Self {
-      allow_remote,
-      auth_tokens,
-      cache_setting,
       blob_store,
       env,
       http_cache,
       http_client,
       memory_files,
+      allow_remote: options.allow_remote,
+      auth_tokens: options.auth_tokens,
+      cache_setting: options.cache_setting,
     }
   }
 
@@ -330,16 +351,29 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
       specifier
     );
 
-    let cache_key = self.http_cache.cache_item_key(specifier)?; // compute this once
-    let result = self.http_cache.get(
-      &cache_key,
-      maybe_checksum
-    )?;
-    match result {
-      Some(cache_data) => Ok(Some(FileOrRedirect::from_deno_cache_entry(
-        specifier, cache_data,
+    let cache_key =
+      self
+        .http_cache
+        .cache_item_key(specifier)
+        .map_err(|source| FetchErrorKind::CacheRead {
+          specifier: specifier.clone(),
+          source,
+        })?;
+    match self.http_cache.get(&cache_key, maybe_checksum) {
+      Ok(Some(entry)) => Ok(Some(FileOrRedirect::from_deno_cache_entry(
+        specifier, entry,
       )?)),
-      None => Ok(None),
+      Ok(None) => Ok(None),
+      Err(CacheReadFileError::Io(source)) => Err(
+        FetchErrorKind::CacheRead {
+          specifier: specifier.clone(),
+          source,
+        }
+        .into_box(),
+      ),
+      Err(CacheReadFileError::ChecksumIntegrity(err)) => {
+        Err(FetchErrorKind::ChecksumIntegrity(*err).into_box())
+      }
     }
   }
 
@@ -349,15 +383,22 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
     &self,
     specifier: &Url,
   ) -> Result<File, DataUrlDecodeError> {
-    fn parse(specifier: &Url) -> Result<(Vec<u8>, HashMap<String, String>), DataUrlDecodeError> {
-      let url =
-        DataUrl::process(specifier.as_str()).map_err(|source| DataUrlDecodeError {
+    fn parse(
+      specifier: &Url,
+    ) -> Result<(Vec<u8>, HashMap<String, String>), DataUrlDecodeError> {
+      let url = DataUrl::process(specifier.as_str()).map_err(|source| {
+        DataUrlDecodeError {
           source: DataUrlDecodeSourceError::DataUrl(source),
-        })?;
-      let (bytes, _) = url.decode_to_vec().map_err(|source| DataUrlDecodeError {
+        }
+      })?;
+      let (bytes, _) =
+        url.decode_to_vec().map_err(|source| DataUrlDecodeError {
           source: DataUrlDecodeSourceError::InvalidBase64(source),
         })?;
-      let headers = HashMap::from([("content-type".to_string(), url.mime_type().to_string())]);
+      let headers = HashMap::from([(
+        "content-type".to_string(),
+        url.mime_type().to_string(),
+      )]);
       Ok((bytes, headers))
     }
 
@@ -371,20 +412,17 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
   }
 
   /// Get a blob URL.
-  async fn fetch_blob_url(
-    &self,
-    specifier: &Url,
-  ) -> Result<File, FetchError> {
+  async fn fetch_blob_url(&self, specifier: &Url) -> Result<File, FetchError> {
     debug!("FileFetcher::fetch_blob_url() - specifier: {}", specifier);
     let blob = self
       .blob_store
-      .get(specifier).await
-      .map_err(|err| {
-        FetchErrorKind::ReadingBlobUrl { specifier: specifier.clone(), source: err }
+      .get(specifier)
+      .await
+      .map_err(|err| FetchErrorKind::ReadingBlobUrl {
+        specifier: specifier.clone(),
+        source: err,
       })?
-      .ok_or_else(|| {
-        FetchErrorKind::NotFound(specifier.clone())
-      })?;
+      .ok_or_else(|| FetchErrorKind::NotFound(specifier.clone()))?;
 
     let headers =
       HashMap::from([("content-type".to_string(), blob.media_type.clone())]);
@@ -418,23 +456,19 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
     }
 
     if *cache_setting == CacheSetting::Only {
-      return Err(FetchErrorKind::NotCached { specifier: specifier.clone() }.into_box());
+      return Err(
+        FetchErrorKind::NotCached {
+          specifier: specifier.clone(),
+        }
+        .into_box(),
+      );
     }
 
     let maybe_etag_cache_entry = self
       .http_cache
       .cache_item_key(specifier)
       .ok()
-      .and_then(|key| {
-        self
-          .http_cache
-          .get(
-            &key,
-            maybe_checksum
-          )
-          .ok()
-          .flatten()
-      })
+      .and_then(|key| self.http_cache.get(&key, maybe_checksum).ok().flatten())
       .and_then(|cache_entry| {
         cache_entry
           .metadata
@@ -459,16 +493,31 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
     {
       FetchOnceResult::NotModified => {
         let (cache_entry, _) = maybe_etag_cache_entry.unwrap();
-        FileOrRedirect::from_deno_cache_entry(specifier, cache_entry).map_err(|err| FetchErrorKind::RedirectResolution(err).into_box())
+        FileOrRedirect::from_deno_cache_entry(specifier, cache_entry)
+          .map_err(|err| FetchErrorKind::RedirectResolution(err).into_box())
       }
       FetchOnceResult::Redirect(redirect_url, headers) => {
-        self.http_cache.set(specifier, headers, &[]).map_err(|source| FetchErrorKind::CacheSave { specifier: specifier.clone(), source: source })?;
+        self
+          .http_cache
+          .set(specifier, headers, &[])
+          .map_err(|source| FetchErrorKind::CacheSave {
+            specifier: specifier.clone(),
+            source,
+          })?;
         Ok(FileOrRedirect::Redirect(redirect_url))
       }
       FetchOnceResult::Code(bytes, headers) => {
-        self.http_cache.set(specifier, headers.clone(), &bytes).map_err(|source| FetchErrorKind::CacheSave { specifier: specifier.clone(), source: source })?;
+        self
+          .http_cache
+          .set(specifier, headers.clone(), &bytes)
+          .map_err(|source| FetchErrorKind::CacheSave {
+            specifier: specifier.clone(),
+            source,
+          })?;
         if let Some(checksum) = &maybe_checksum {
-          checksum.check(&specifier, &bytes)?;
+          checksum
+            .check(specifier, &bytes)
+            .map_err(|err| FetchErrorKind::ChecksumIntegrity(*err))?;
         }
         Ok(FileOrRedirect::File(File {
           specifier: specifier.clone(),
@@ -501,7 +550,7 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
           return false;
         };
         let cache_semantics =
-          CacheSemantics::new(headers, download_time, SystemTime::now());
+          CacheSemantics::new(headers, download_time, self.env.time_now());
         cache_semantics.should_use()
       }
       CacheSetting::ReloadSome(list) => {
@@ -527,16 +576,8 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
 
   /// Fetch a source file and asynchronously return it.
   #[inline(always)]
-  pub async fn fetch(
-    &self,
-    specifier: &Url,
-  ) -> Result<File, FetchError> {
-    self
-      .fetch_with_options(
-        specifier,
-        Default::default(),
-      )
-      .await
+  pub async fn fetch(&self, specifier: &Url) -> Result<File, FetchError> {
+    self.fetch_with_options(specifier, Default::default()).await
   }
 
   pub async fn fetch_with_options(
@@ -544,7 +585,9 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
     specifier: &Url,
     options: FetchOptions<'_>,
   ) -> Result<File, FetchError> {
-    self.fetch_with_options_and_max_redirect(specifier, options, 10).await
+    self
+      .fetch_with_options_and_max_redirect(specifier, options, 10)
+      .await
   }
 
   async fn fetch_with_options_and_max_redirect(
@@ -560,13 +603,14 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
         .fetch_no_follow_with_options(
           &specifier,
           FetchNoFollowOptions {
-          fetch_options: FetchOptions {
-            maybe_auth: maybe_auth.clone(),
-            maybe_accept: options.maybe_accept,
-            maybe_cache_setting: options.maybe_cache_setting,
+            fetch_options: FetchOptions {
+              maybe_auth: maybe_auth.clone(),
+              maybe_accept: options.maybe_accept,
+              maybe_cache_setting: options.maybe_cache_setting,
+            },
+            maybe_checksum: None,
           },
-          maybe_checksum: None,
-        })
+        )
         .await?
       {
         FileOrRedirect::File(file) => {
@@ -606,7 +650,10 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
       // disk changing effecting things like workers and dynamic imports.
       self.fetch_local(specifier).map(FileOrRedirect::File)
     } else if scheme == "data" {
-      self.fetch_data_url(specifier).map(FileOrRedirect::File).map_err(|e| FetchErrorKind::DataUrlDecode(e).into_box())
+      self
+        .fetch_data_url(specifier)
+        .map(FileOrRedirect::File)
+        .map_err(|e| FetchErrorKind::DataUrlDecode(e).into_box())
     } else if scheme == "blob" {
       self
         .fetch_blob_url(specifier)
@@ -627,7 +674,13 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
           .await
       }
     } else {
-      Err(FetchErrorKind::UnsupportedScheme { scheme: scheme.to_string(), specifier: specifier.clone() }.into_box())
+      Err(
+        FetchErrorKind::UnsupportedScheme {
+          scheme: scheme.to_string(),
+          specifier: specifier.clone(),
+        }
+        .into_box(),
+      )
     }
   }
 
@@ -643,44 +696,68 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
     let mut headers = HeaderMap::new();
 
     if let Some(etag) = args.maybe_etag {
-      let if_none_match_val = HeaderValue::from_str(&etag).map_err(|source| FetchErrorKind::InvalidHeader { name: "etag", source })?;
-        headers
-        .insert(IF_NONE_MATCH, if_none_match_val);
+      let if_none_match_val =
+        HeaderValue::from_str(&etag).map_err(|source| {
+          FetchErrorKind::InvalidHeader {
+            name: "etag",
+            source,
+          }
+        })?;
+      headers.insert(IF_NONE_MATCH, if_none_match_val);
     }
     if let Some(auth_token) = args.maybe_auth_token {
-      let authorization_val = HeaderValue::from_str(&auth_token.to_string()).map_err(|source| FetchErrorKind::InvalidHeader { name: "authorization", source })?;
-      headers
-        .insert(AUTHORIZATION, authorization_val);
+      let authorization_val = HeaderValue::from_str(&auth_token.to_string())
+        .map_err(|source| FetchErrorKind::InvalidHeader {
+          name: "authorization",
+          source,
+        })?;
+      headers.insert(AUTHORIZATION, authorization_val);
     } else if let Some((header, value)) = args.maybe_auth {
       headers.insert(header, value);
     }
     if let Some(accept) = args.maybe_accept {
-      let accepts_val = HeaderValue::from_str(&accept).map_err(|source| FetchErrorKind::InvalidHeader { name: "accept", source })?;
+      let accepts_val = HeaderValue::from_str(&accept).map_err(|source| {
+        FetchErrorKind::InvalidHeader {
+          name: "accept",
+          source,
+        }
+      })?;
       headers.insert(ACCEPT, accepts_val);
     }
     match self.http_client.send(args.url, headers).await {
-      Ok(resp) => {
-        match resp {
-          SendResponse::NotModified => Ok(FetchOnceResult::NotModified),
-          SendResponse::Redirect(headers) => {
-            let new_url = resolve_redirect_from_response(&args.url, &headers)?;
-            return Ok(FetchOnceResult::Redirect(new_url, response_headers_to_headers_map(&headers)))
-          }
-          SendResponse::Success(headers, body) => {
-            Ok(FetchOnceResult::Code(body, response_headers_to_headers_map(&headers)))
-          }
+      Ok(resp) => match resp {
+        SendResponse::NotModified => Ok(FetchOnceResult::NotModified),
+        SendResponse::Redirect(headers) => {
+          let new_url = resolve_redirect_from_response(args.url, &headers)?;
+          Ok(FetchOnceResult::Redirect(
+            new_url,
+            response_headers_to_headers_map(&headers),
+          ))
         }
+        SendResponse::Success(headers, body) => Ok(FetchOnceResult::Code(
+          body,
+          response_headers_to_headers_map(&headers),
+        )),
       },
-      Err(err) => {
-        return match err {
-          SendError::Io(err) => Err(FetchErrorKind::FetchingRemote {
+      Err(err) => match err {
+        SendError::Io(err) => Err(
+          FetchErrorKind::FetchingRemote {
             specifier: args.url.clone(),
             source: err,
-          }.into_box()),
-          SendError::NotFound => Err(FetchErrorKind::NotFound(args.url.clone()).into_box()),
-          SendError::StatusCode { status_code } => Err(FetchErrorKind::ClientError { specifier: args.url.clone(), status_code, }.into_box()),
+          }
+          .into_box(),
+        ),
+        SendError::NotFound => {
+          Err(FetchErrorKind::NotFound(args.url.clone()).into_box())
         }
-      }
+        SendError::StatusCode { status_code } => Err(
+          FetchErrorKind::ClientError {
+            specifier: args.url.clone(),
+            status_code,
+          }
+          .into_box(),
+        ),
+      },
     }
   }
 
@@ -702,10 +779,13 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
         return Err(FetchErrorKind::NotFound(specifier.clone()).into_box());
       }
       Err(err) => {
-        return Err(FetchErrorKind::ReadingFile {
-          specifier: specifier.clone(),
-          source: err,
-        }.into_box());
+        return Err(
+          FetchErrorKind::ReadingFile {
+            specifier: specifier.clone(),
+            source: err,
+          }
+          .into_box(),
+        );
       }
     };
 
@@ -717,9 +797,7 @@ impl<Env: DenoCacheEnv> FileFetcher<Env> {
   }
 }
 
-fn response_headers_to_headers_map(
-  response_headers: &HeaderMap
-) -> HeadersMap {
+fn response_headers_to_headers_map(response_headers: &HeaderMap) -> HeadersMap {
   let mut result_headers = HashMap::with_capacity(response_headers.len());
   for key in response_headers.keys() {
     let key_str = key.to_string();
@@ -749,12 +827,11 @@ fn resolve_redirect_from_response(
   headers: &HeaderMap,
 ) -> Result<Url, NoRedirectHeaderError> {
   if let Some(location) = headers.get(LOCATION) {
-    let location_string = location.to_str().map_err(|source| {
-      NoRedirectHeaderError {
+    let location_string =
+      location.to_str().map_err(|source| NoRedirectHeaderError {
         request_url: request_url.clone(),
         maybe_source: Some(source),
-      }
-    })?;
+      })?;
     log::debug!("Redirecting to {:?}...", &location_string);
     let new_url = resolve_url_from_location(request_url, location_string);
     Ok(new_url)
