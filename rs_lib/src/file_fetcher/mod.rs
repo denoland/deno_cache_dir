@@ -205,16 +205,6 @@ pub struct UnsupportedSchemeError {
   pub specifier: Url,
 }
 
-pub fn validate_scheme(specifier: &Url) -> Result<(), UnsupportedSchemeError> {
-  match specifier.scheme() {
-    "blob" | "data" | "file" | "http" | "https" | "jsr" | "npm" => Ok(()),
-    _ => Err(UnsupportedSchemeError {
-      scheme: specifier.scheme().to_string(),
-      specifier: specifier.clone(),
-    }),
-  }
-}
-
 #[derive(Debug, Boxed, JsError)]
 pub struct FetchNoFollowError(pub Box<FetchNoFollowErrorKind>);
 
