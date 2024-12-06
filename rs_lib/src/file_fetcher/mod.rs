@@ -195,6 +195,11 @@ pub struct FailedReadingLocalFileError {
   pub source: std::io::Error,
 }
 
+#[derive(Debug, Error, JsError)]
+#[class("Http")]
+#[error("Fetch '{0}' failed, too many redirects.")]
+pub struct TooManyRedirectsError(pub Url);
+
 // this message list additional `npm` and `jsr` schemes, but they should actually be handled
 // before `file_fetcher.rs` APIs are even hit.
 #[derive(Debug, Error, JsError)]
@@ -203,6 +208,14 @@ pub struct FailedReadingLocalFileError {
 pub struct UnsupportedSchemeError {
   pub scheme: String,
   pub specifier: Url,
+}
+
+/// Gets if the provided scheme was valid.
+pub fn is_valid_scheme(scheme: &str) -> bool {
+  matches!(
+    scheme,
+    "blob" | "data" | "file" | "http" | "https" | "jsr" | "npm"
+  )
 }
 
 #[derive(Debug, Boxed, JsError)]
@@ -288,9 +301,9 @@ pub struct FetchCachedError(pub Box<FetchCachedErrorKind>);
 
 #[derive(Debug, Error, JsError)]
 pub enum FetchCachedErrorKind {
-  #[class("Http")]
-  #[error("Import '{0}' failed, too many redirects.")]
-  TooManyRedirects(Url),
+  #[class(inherit)]
+  #[error(transparent)]
+  TooManyRedirects(TooManyRedirectsError),
   #[class(inherit)]
   #[error(transparent)]
   ChecksumIntegrity(#[from] ChecksumIntegrityError),
@@ -467,7 +480,10 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
       }
     }
     Err(
-      FetchCachedErrorKind::TooManyRedirects(specifier.into_owned()).into_box(),
+      FetchCachedErrorKind::TooManyRedirects(TooManyRedirectsError(
+        specifier.into_owned(),
+      ))
+      .into_box(),
     )
   }
 
