@@ -195,6 +195,26 @@ pub struct FailedReadingLocalFileError {
   pub source: std::io::Error,
 }
 
+// this message list additional `npm` and `jsr` schemes, but they should actually be handled
+// before `file_fetcher.rs` APIs are even hit.
+#[derive(Debug, Error, JsError)]
+#[class(type)]
+#[error("Unsupported scheme \"{scheme}\" for module \"{specifier}\". Supported schemes:\n - \"blob\"\n - \"data\"\n - \"file\"\n - \"http\"\n - \"https\"\n - \"jsr\"\n - \"npm\"")]
+pub struct UnsupportedSchemeError {
+  pub scheme: String,
+  pub specifier: Url,
+}
+
+pub fn validate_scheme(specifier: &Url) -> Result<(), UnsupportedSchemeError> {
+  match specifier.scheme() {
+    "blob" | "data" | "file" | "http" | "https" | "jsr" | "npm" => Ok(()),
+    _ => Err(UnsupportedSchemeError {
+      scheme: specifier.scheme().to_string(),
+      specifier: specifier.clone(),
+    }),
+  }
+}
+
 #[derive(Debug, Boxed, JsError)]
 pub struct FetchNoFollowError(pub Box<FetchNoFollowErrorKind>);
 
@@ -255,9 +275,9 @@ pub enum FetchNoFollowErrorKind {
   },
   // this message list additional `npm` and `jsr` schemes, but they should actually be handled
   // before `file_fetcher.rs` APIs are even hit.
-  #[class(type)]
-  #[error("Unsupported scheme \"{scheme}\" for module \"{specifier}\". Supported schemes:\n - data:\n - blob:\n - file:\n - http:\n - https:\n - npm:\n - jsr:")]
-  UnsupportedScheme { scheme: String, specifier: Url },
+  #[class(inherit)]
+  #[error(transparent)]
+  UnsupportedScheme(#[from] UnsupportedSchemeError),
   #[class(type)]
   #[error(transparent)]
   FailedReadingRedirectHeader(#[from] FailedReadingRedirectHeaderError),
@@ -510,10 +530,10 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
       }
     } else {
       Err(
-        FetchNoFollowErrorKind::UnsupportedScheme {
+        FetchNoFollowErrorKind::UnsupportedScheme(UnsupportedSchemeError {
           scheme: scheme.to_string(),
           specifier: specifier.clone(),
-        }
+        })
         .into_box(),
       )
     }
