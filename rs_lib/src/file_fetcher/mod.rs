@@ -903,7 +903,7 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
 
 fn response_headers_to_headers_map(response_headers: HeaderMap) -> HeadersMap {
   let mut result_headers = HashMap::with_capacity(response_headers.len());
-  // todo(THIS PR): change to consume to avoid allocations
+  // todo(dsherret): change to consume to avoid allocations
   for key in response_headers.keys() {
     let key_str = key.to_string();
     let values = response_headers.get_all(key);
