@@ -3,6 +3,8 @@
 mod cache;
 mod common;
 mod env;
+#[cfg(feature = "file_fetcher")]
+pub mod file_fetcher;
 mod global;
 mod local;
 pub mod npm;
@@ -16,6 +18,7 @@ pub use cache::GlobalToLocalCopy;
 pub use cache::HttpCache;
 pub use cache::HttpCacheItemKey;
 pub use cache::SerializedCachedUrlMetadata;
+pub use common::HeadersMap;
 pub use env::DenoCacheEnv;
 pub use global::GlobalHttpCache;
 pub use local::LocalHttpCache;

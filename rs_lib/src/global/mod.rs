@@ -16,9 +16,7 @@ use crate::cache::CacheEntry;
 use crate::cache::CacheReadFileError;
 use crate::cache::Checksum;
 use crate::cache::SerializedCachedUrlMetadata;
-use crate::common::checksum;
 use crate::common::HeadersMap;
-use crate::ChecksumIntegrityError;
 
 mod cache_file;
 
@@ -129,16 +127,9 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
 
     if let Some(file) = &maybe_file {
       if let Some(expected_checksum) = maybe_checksum {
-        let actual = checksum(&file.content);
-        if expected_checksum.as_str() != actual {
-          return Err(CacheReadFileError::ChecksumIntegrity(Box::new(
-            ChecksumIntegrityError {
-              url: key.url.clone(),
-              expected: expected_checksum.as_str().to_string(),
-              actual,
-            },
-          )));
-        }
+        expected_checksum
+          .check(key.url, &file.content)
+          .map_err(CacheReadFileError::ChecksumIntegrity)?;
       }
     }
 
