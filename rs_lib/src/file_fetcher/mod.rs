@@ -128,7 +128,7 @@ impl MemoryFiles for NullMemoryFiles {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum SendResponse {
   NotModified,
   Redirect(HeaderMap),
@@ -180,7 +180,7 @@ pub struct CacheReadError {
 
 #[derive(Debug, Error)]
 #[error("Failed reading location header for '{}'{}", .request_url, match maybe_location { Some(location) => format!(" to '{}'", location), None => "".to_string() })]
-pub struct FailedReadingRedirectHeaderError {
+pub struct RedirectHeaderParseError {
   pub request_url: Url,
   pub maybe_location: Option<String>,
   #[source]
@@ -284,7 +284,7 @@ pub enum FetchNoFollowErrorKind {
   UnsupportedScheme(#[from] UnsupportedSchemeError),
   #[class(type)]
   #[error(transparent)]
-  FailedReadingRedirectHeader(#[from] FailedReadingRedirectHeaderError),
+  RedirectHeaderParse(#[from] RedirectHeaderParseError),
   #[class("NotCached")]
   #[error("Specifier not found in cache: \"{specifier}\", --cached-only is specified.")]
   NotCached { specifier: Url },
@@ -826,7 +826,11 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
       Ok(resp) => match resp {
         SendResponse::NotModified => Ok(SendRequestResponse::NotModified),
         SendResponse::Redirect(headers) => {
-          let new_url = resolve_redirect_from_response(args.url, &headers)?;
+          let new_url = resolve_redirect_from_headers(args.url, &headers)
+            .map_err(|err| {
+              FetchNoFollowErrorKind::RedirectHeaderParse(*err)
+                .into_box()
+            })?;
           Ok(SendRequestResponse::Redirect(
             new_url,
             response_headers_to_headers_map(headers),
@@ -916,33 +920,32 @@ fn response_headers_to_headers_map(response_headers: HeaderMap) -> HeadersMap {
   result_headers
 }
 
-fn resolve_redirect_from_response(
+pub fn resolve_redirect_from_headers(
   request_url: &Url,
   headers: &HeaderMap,
-) -> Result<Url, FailedReadingRedirectHeaderError> {
+) -> Result<Url, Box<RedirectHeaderParseError>> {
   if let Some(location) = headers.get(LOCATION) {
-    let location_string =
-      location
-        .to_str()
-        .map_err(|source| FailedReadingRedirectHeaderError {
-          request_url: request_url.clone(),
-          maybe_location: None,
-          maybe_source: Some(source.into()),
-        })?;
+    let location_string = location.to_str().map_err(|source| {
+      Box::new(RedirectHeaderParseError {
+        request_url: request_url.clone(),
+        maybe_location: None,
+        maybe_source: Some(source.into()),
+      })
+    })?;
     log::debug!("Redirecting to {:?}...", &location_string);
     resolve_url_from_location(request_url, location_string).map_err(|source| {
-      FailedReadingRedirectHeaderError {
+      Box::new(RedirectHeaderParseError {
         request_url: request_url.clone(),
         maybe_location: Some(location_string.to_string()),
-        maybe_source: Some(source.into()),
-      }
+        maybe_source: Some(source),
+      })
     })
   } else {
-    Err(FailedReadingRedirectHeaderError {
+    Err(Box::new(RedirectHeaderParseError {
       request_url: request_url.clone(),
       maybe_location: None,
       maybe_source: None,
-    })
+    }))
   }
 }
 
