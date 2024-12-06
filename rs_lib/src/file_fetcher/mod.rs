@@ -828,8 +828,7 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
         SendResponse::Redirect(headers) => {
           let new_url = resolve_redirect_from_headers(args.url, &headers)
             .map_err(|err| {
-              FetchNoFollowErrorKind::RedirectHeaderParse(*err)
-                .into_box()
+              FetchNoFollowErrorKind::RedirectHeaderParse(*err).into_box()
             })?;
           Ok(SendRequestResponse::Redirect(
             new_url,
