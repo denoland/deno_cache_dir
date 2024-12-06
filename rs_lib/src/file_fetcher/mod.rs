@@ -179,11 +179,12 @@ pub struct CacheReadError {
 }
 
 #[derive(Debug, Error)]
-#[error("Failed reading location header for '{}'", .request_url)]
+#[error("Failed reading location header for '{}'{}", .request_url, match maybe_location { Some(location) => format!(" to '{}'", location), None => "".to_string() })]
 pub struct FailedReadingRedirectHeaderError {
   pub request_url: Url,
+  pub maybe_location: Option<String>,
   #[source]
-  pub maybe_source: Option<header::ToStrError>,
+  pub maybe_source: Option<Box<dyn std::error::Error + Send + Sync>>,
 }
 
 #[derive(Debug, Error, JsError)]
@@ -925,14 +926,21 @@ fn resolve_redirect_from_response(
         .to_str()
         .map_err(|source| FailedReadingRedirectHeaderError {
           request_url: request_url.clone(),
-          maybe_source: Some(source),
+          maybe_location: None,
+          maybe_source: Some(source.into()),
         })?;
     log::debug!("Redirecting to {:?}...", &location_string);
-    let new_url = resolve_url_from_location(request_url, location_string);
-    Ok(new_url)
+    resolve_url_from_location(request_url, location_string).map_err(|source| {
+      FailedReadingRedirectHeaderError {
+        request_url: request_url.clone(),
+        maybe_location: Some(location_string.to_string()),
+        maybe_source: Some(source.into()),
+      }
+    })
   } else {
     Err(FailedReadingRedirectHeaderError {
       request_url: request_url.clone(),
+      maybe_location: None,
       maybe_source: None,
     })
   }
@@ -940,28 +948,27 @@ fn resolve_redirect_from_response(
 
 /// Construct the next uri based on base uri and location header fragment
 /// See <https://tools.ietf.org/html/rfc3986#section-4.2>
-fn resolve_url_from_location(base_url: &Url, location: &str) -> Url {
+fn resolve_url_from_location(
+  base_url: &Url,
+  location: &str,
+) -> Result<Url, Box<dyn std::error::Error + Send + Sync>> {
+  // todo(dsherret): these shouldn't unwrap
   if location.starts_with("http://") || location.starts_with("https://") {
     // absolute uri
-    Url::parse(location).expect("provided redirect url should be a valid url")
+    Ok(Url::parse(location)?)
   } else if location.starts_with("//") {
     // "//" authority path-abempty
-    Url::parse(&format!("{}:{}", base_url.scheme(), location))
-      .expect("provided redirect url should be a valid url")
+    Ok(Url::parse(&format!("{}:{}", base_url.scheme(), location))?)
   } else if location.starts_with('/') {
     // path-absolute
-    base_url
-      .join(location)
-      .expect("provided redirect url should be a valid url")
+    Ok(base_url.join(location)?)
   } else {
     // assuming path-noscheme | path-empty
     let base_url_path_str = base_url.path().to_owned();
     // Pop last part or url (after last slash)
     let segs: Vec<&str> = base_url_path_str.rsplitn(2, '/').collect();
     let new_path = format!("{}/{}", segs.last().unwrap_or(&""), location);
-    base_url
-      .join(&new_path)
-      .expect("provided redirect url should be a valid url")
+    Ok(base_url.join(&new_path)?)
   }
 }
 
@@ -979,4 +986,51 @@ enum SendRequestResponse {
   Code(Vec<u8>, HeadersMap),
   NotModified,
   Redirect(Url, HeadersMap),
+}
+
+#[cfg(test)]
+mod test {
+  use url::Url;
+
+  use crate::file_fetcher::resolve_url_from_location;
+
+  #[test]
+  fn test_resolve_url_from_location_full_1() {
+    let url = "http://deno.land".parse::<Url>().unwrap();
+    let new_uri = resolve_url_from_location(&url, "http://golang.org").unwrap();
+    assert_eq!(new_uri.host_str().unwrap(), "golang.org");
+  }
+
+  #[test]
+  fn test_resolve_url_from_location_full_2() {
+    let url = "https://deno.land".parse::<Url>().unwrap();
+    let new_uri =
+      resolve_url_from_location(&url, "https://golang.org").unwrap();
+    assert_eq!(new_uri.host_str().unwrap(), "golang.org");
+  }
+
+  #[test]
+  fn test_resolve_url_from_location_relative_1() {
+    let url = "http://deno.land/x".parse::<Url>().unwrap();
+    let new_uri =
+      resolve_url_from_location(&url, "//rust-lang.org/en-US").unwrap();
+    assert_eq!(new_uri.host_str().unwrap(), "rust-lang.org");
+    assert_eq!(new_uri.path(), "/en-US");
+  }
+
+  #[test]
+  fn test_resolve_url_from_location_relative_2() {
+    let url = "http://deno.land/x".parse::<Url>().unwrap();
+    let new_uri = resolve_url_from_location(&url, "/y").unwrap();
+    assert_eq!(new_uri.host_str().unwrap(), "deno.land");
+    assert_eq!(new_uri.path(), "/y");
+  }
+
+  #[test]
+  fn test_resolve_url_from_location_relative_3() {
+    let url = "http://deno.land/x".parse::<Url>().unwrap();
+    let new_uri = resolve_url_from_location(&url, "z").unwrap();
+    assert_eq!(new_uri.host_str().unwrap(), "deno.land");
+    assert_eq!(new_uri.path(), "/z");
+  }
 }
