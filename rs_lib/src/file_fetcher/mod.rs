@@ -179,7 +179,7 @@ pub struct CacheReadError {
 }
 
 #[derive(Debug, Error)]
-#[error("Failed reading location header for '{}'{}", .request_url, match maybe_location { Some(location) => format!(" to '{}'", location), None => "".to_string() })]
+#[error("Failed reading location header for '{}'{}", .request_url, .maybe_location.as_ref().map(|location| format!(" to '{}'", location)).unwrap_or_default())]
 pub struct RedirectHeaderParseError {
   pub request_url: Url,
   pub maybe_location: Option<String>,
