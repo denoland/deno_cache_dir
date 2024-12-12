@@ -179,6 +179,7 @@ checksum = "199c66ffd17ee1a948904d33f3d3f364573951c1f9fb3f859bfe7770bf33862a"
 dependencies = [
  "deno_error_macro",
  "libc",
+ "url",
 ]
 
 [[package]]

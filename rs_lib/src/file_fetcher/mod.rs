@@ -143,17 +143,18 @@ pub enum SendError {
 }
 
 #[derive(Debug, Error, JsError)]
-#[class(generic)]
+#[class(inherit)]
 #[error("Failed resolving redirect from '{specifier}' to '{location}'.")]
 pub struct RedirectResolutionError {
   pub specifier: Url,
   pub location: String,
   #[source]
+  #[inherit]
   pub source: url::ParseError,
 }
 
 #[derive(Debug, Error, JsError)]
-#[class(uri)]
+#[class(inherit)]
 #[error("Unable to decode data url.")]
 pub struct DataUrlDecodeError {
   #[source]
@@ -170,11 +171,12 @@ pub enum DataUrlDecodeSourceError {
 }
 
 #[derive(Debug, Error, JsError)]
-#[class(generic)]
+#[class(inherit)]
 #[error("Failed reading cache entry for '{specifier}'.")]
 pub struct CacheReadError {
   pub specifier: Url,
   #[source]
+  #[inherit]
   pub source: std::io::Error,
 }
 
@@ -188,11 +190,12 @@ pub struct RedirectHeaderParseError {
 }
 
 #[derive(Debug, Error, JsError)]
-#[class(generic)]
+#[class(inherit)]
 #[error("Import '{specifier}' failed.")]
 pub struct FailedReadingLocalFileError {
   pub specifier: Url,
   #[source]
+  #[inherit]
   pub source: std::io::Error,
 }
 
