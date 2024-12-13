@@ -121,7 +121,7 @@ pub enum CacheReadFileError {
   ChecksumIntegrity(Box<ChecksumIntegrityError>),
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SerializedCachedUrlMetadata {
   pub headers: HeadersMap,
   pub url: String,
@@ -130,7 +130,7 @@ pub struct SerializedCachedUrlMetadata {
   pub time: Option<u64>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CacheEntry {
   pub metadata: SerializedCachedUrlMetadata,
   pub content: Cow<'static, [u8]>,

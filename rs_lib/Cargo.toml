@@ -45,3 +45,4 @@ serde-wasm-bindgen = { version = "0.6.5", optional = true }
 [dev-dependencies]
 pretty_assertions = "1.4.0"
 tempfile = "3.7.1"
+tokio = { version = "1", features = ["rt", "macros"] }

@@ -68,21 +68,22 @@ pub enum FileOrRedirect {
 
 impl FileOrRedirect {
   fn from_deno_cache_entry(
-    specifier: &Url,
+    url: &Url,
     cache_entry: CacheEntry,
   ) -> Result<Self, RedirectResolutionError> {
     if let Some(redirect_to) = cache_entry.metadata.headers.get("location") {
-      let redirect = specifier.join(redirect_to).map_err(|source| {
-        RedirectResolutionError {
-          specifier: specifier.clone(),
-          location: redirect_to.clone(),
-          source,
-        }
-      })?;
+      let redirect =
+        url
+          .join(redirect_to)
+          .map_err(|source| RedirectResolutionError {
+            url: url.clone(),
+            location: redirect_to.clone(),
+            source,
+          })?;
       Ok(FileOrRedirect::Redirect(redirect))
     } else {
       Ok(FileOrRedirect::File(File {
-        specifier: specifier.clone(),
+        url: url.clone(),
         maybe_headers: Some(cache_entry.metadata.headers),
         source: Arc::from(cache_entry.content),
       }))
@@ -95,7 +96,7 @@ impl FileOrRedirect {
 pub struct File {
   /// The _final_ specifier for the file.  The requested specifier and the final
   /// specifier maybe different for remote files that have been redirected.
-  pub specifier: Url,
+  pub url: Url,
   pub maybe_headers: Option<HashMap<String, String>>,
   /// The source of the file.
   pub source: Arc<[u8]>,
@@ -104,7 +105,7 @@ pub struct File {
 impl File {
   pub fn resolve_media_type_and_charset(&self) -> (MediaType, Option<&str>) {
     deno_media_type::resolve_media_type_and_charset_from_content_type(
-      &self.specifier,
+      &self.url,
       self
         .maybe_headers
         .as_ref()
@@ -115,7 +116,7 @@ impl File {
 }
 
 pub trait MemoryFiles: std::fmt::Debug + Send + Sync {
-  fn get(&self, specifier: &Url) -> Option<File>;
+  fn get(&self, url: &Url) -> Option<File>;
 }
 
 /// Implementation of `MemoryFiles` that always returns `None`.
@@ -123,7 +124,7 @@ pub trait MemoryFiles: std::fmt::Debug + Send + Sync {
 pub struct NullMemoryFiles;
 
 impl MemoryFiles for NullMemoryFiles {
-  fn get(&self, _specifier: &Url) -> Option<File> {
+  fn get(&self, _url: &Url) -> Option<File> {
     None
   }
 }
@@ -144,9 +145,9 @@ pub enum SendError {
 
 #[derive(Debug, Error, JsError)]
 #[class(inherit)]
-#[error("Failed resolving redirect from '{specifier}' to '{location}'.")]
+#[error("Failed resolving redirect from '{url}' to '{location}'.")]
 pub struct RedirectResolutionError {
-  pub specifier: Url,
+  pub url: Url,
   pub location: String,
   #[source]
   #[inherit]
@@ -172,9 +173,9 @@ pub enum DataUrlDecodeSourceError {
 
 #[derive(Debug, Error, JsError)]
 #[class(inherit)]
-#[error("Failed reading cache entry for '{specifier}'.")]
+#[error("Failed reading cache entry for '{url}'.")]
 pub struct CacheReadError {
-  pub specifier: Url,
+  pub url: Url,
   #[source]
   #[inherit]
   pub source: std::io::Error,
@@ -191,9 +192,9 @@ pub struct RedirectHeaderParseError {
 
 #[derive(Debug, Error, JsError)]
 #[class(inherit)]
-#[error("Import '{specifier}' failed.")]
+#[error("Import '{url}' failed.")]
 pub struct FailedReadingLocalFileError {
-  pub specifier: Url,
+  pub url: Url,
   #[source]
   #[inherit]
   pub source: std::io::Error,
@@ -208,10 +209,10 @@ pub struct TooManyRedirectsError(pub Url);
 // before `file_fetcher.rs` APIs are even hit.
 #[derive(Debug, Error, JsError)]
 #[class(type)]
-#[error("Unsupported scheme \"{scheme}\" for module \"{specifier}\". Supported schemes:\n - \"blob\"\n - \"data\"\n - \"file\"\n - \"http\"\n - \"https\"\n - \"jsr\"\n - \"npm\"")]
+#[error("Unsupported scheme \"{scheme}\" for module \"{url}\". Supported schemes:\n - \"blob\"\n - \"data\"\n - \"file\"\n - \"http\"\n - \"https\"\n - \"jsr\"\n - \"npm\"")]
 pub struct UnsupportedSchemeError {
   pub scheme: String,
-  pub specifier: Url,
+  pub url: Url,
 }
 
 /// Gets if the provided scheme was valid.
@@ -234,9 +235,9 @@ pub enum FetchNoFollowErrorKind {
   #[error("Import '{0}' failed, not found.")]
   NotFound(Url),
   #[class(generic)]
-  #[error("Import '{specifier}' failed.")]
+  #[error("Import '{url}' failed.")]
   ReadingBlobUrl {
-    specifier: Url,
+    url: Url,
     #[source]
     source: std::io::Error,
   },
@@ -244,16 +245,16 @@ pub enum FetchNoFollowErrorKind {
   #[error(transparent)]
   ReadingFile(#[from] FailedReadingLocalFileError),
   #[class(generic)]
-  #[error("Import '{specifier}' failed.")]
+  #[error("Import '{url}' failed.")]
   FetchingRemote {
-    specifier: Url,
+    url: Url,
     #[source]
     source: Box<dyn std::error::Error + Send + Sync>,
   },
   #[class(generic)]
-  #[error("Import '{specifier}' failed: {status_code}")]
+  #[error("Import '{url}' failed: {status_code}")]
   ClientError {
-    specifier: Url,
+    url: Url,
     status_code: http::StatusCode,
   },
   #[class("NoRemote")]
@@ -274,9 +275,9 @@ pub enum FetchNoFollowErrorKind {
   #[error(transparent)]
   CacheRead(#[from] CacheReadError),
   #[class(generic)]
-  #[error("Failed caching '{specifier}'.")]
+  #[error("Failed caching '{url}'.")]
   CacheSave {
-    specifier: Url,
+    url: Url,
     #[source]
     source: std::io::Error,
   },
@@ -289,8 +290,10 @@ pub enum FetchNoFollowErrorKind {
   #[error(transparent)]
   RedirectHeaderParse(#[from] RedirectHeaderParseError),
   #[class("NotCached")]
-  #[error("Specifier not found in cache: \"{specifier}\", --cached-only is specified.")]
-  NotCached { specifier: Url },
+  #[error(
+    "Specifier not found in cache: \"{url}\", --cached-only is specified."
+  )]
+  NotCached { url: Url },
   #[class(type)]
   #[error("Failed setting header '{name}'.")]
   InvalidHeader {
@@ -397,7 +400,7 @@ pub struct BlobData {
 
 #[async_trait::async_trait(?Send)]
 pub trait BlobStore: std::fmt::Debug + Send + Sync {
-  async fn get(&self, specifier: &Url) -> std::io::Result<Option<BlobData>>;
+  async fn get(&self, url: &Url) -> std::io::Result<Option<BlobData>>;
 }
 
 #[derive(Debug, Default)]
@@ -462,21 +465,21 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
   /// Fetch cached remote file.
   pub fn fetch_cached(
     &self,
-    specifier: &Url,
+    url: &Url,
     redirect_limit: i64,
   ) -> Result<Option<File>, FetchCachedError> {
-    if !matches!(specifier.scheme(), "http" | "https") {
+    if !matches!(url.scheme(), "http" | "https") {
       return Ok(None);
     }
 
-    let mut specifier = Cow::Borrowed(specifier);
+    let mut url = Cow::Borrowed(url);
     for _ in 0..=redirect_limit {
-      match self.fetch_cached_no_follow(&specifier, None)? {
+      match self.fetch_cached_no_follow(&url, None)? {
         Some(FileOrRedirect::File(file)) => {
           return Ok(Some(file));
         }
-        Some(FileOrRedirect::Redirect(redirect_specifier)) => {
-          specifier = Cow::Owned(redirect_specifier);
+        Some(FileOrRedirect::Redirect(redirect_url)) => {
+          url = Cow::Owned(redirect_url);
         }
         None => {
           return Ok(None);
@@ -485,7 +488,7 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
     }
     Err(
       FetchCachedErrorKind::TooManyRedirects(TooManyRedirectsError(
-        specifier.into_owned(),
+        url.into_owned(),
       ))
       .into_box(),
     )
@@ -496,41 +499,36 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
   /// You should verify permissions of the specifier before calling this function.
   pub async fn fetch_no_follow(
     &self,
-    specifier: &Url,
+    url: &Url,
     options: FetchNoFollowOptions<'_>,
   ) -> Result<FileOrRedirect, FetchNoFollowError> {
     // note: this debug output is used by the tests
-    debug!("FileFetcher::fetch_no_follow - specifier: {}", specifier);
-    let scheme = specifier.scheme();
-    if let Some(file) = self.memory_files.get(specifier) {
+    debug!("FileFetcher::fetch_no_follow - specifier: {}", url);
+    let scheme = url.scheme();
+    if let Some(file) = self.memory_files.get(url) {
       Ok(FileOrRedirect::File(file))
     } else if scheme == "file" {
       // we do not in memory cache files, as this would prevent files on the
       // disk changing effecting things like workers and dynamic imports.
-      let maybe_file = self.fetch_local(specifier)?;
+      let maybe_file = self.fetch_local(url)?;
       match maybe_file {
         Some(file) => Ok(FileOrRedirect::File(file)),
-        None => {
-          Err(FetchNoFollowErrorKind::NotFound(specifier.clone()).into_box())
-        }
+        None => Err(FetchNoFollowErrorKind::NotFound(url.clone()).into_box()),
       }
     } else if scheme == "data" {
       self
-        .fetch_data_url(specifier)
+        .fetch_data_url(url)
         .map(FileOrRedirect::File)
         .map_err(|e| FetchNoFollowErrorKind::DataUrlDecode(e).into_box())
     } else if scheme == "blob" {
-      self
-        .fetch_blob_url(specifier)
-        .await
-        .map(FileOrRedirect::File)
+      self.fetch_blob_url(url).await.map(FileOrRedirect::File)
     } else if scheme == "https" || scheme == "http" {
       if !self.allow_remote {
-        Err(FetchNoFollowErrorKind::NoRemote(specifier.clone()).into_box())
+        Err(FetchNoFollowErrorKind::NoRemote(url.clone()).into_box())
       } else {
         self
           .fetch_remote_no_follow(
-            specifier,
+            url,
             options.maybe_accept,
             options.maybe_cache_setting.unwrap_or(&self.cache_setting),
             options.maybe_checksum,
@@ -542,7 +540,7 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
       Err(
         FetchNoFollowErrorKind::UnsupportedScheme(UnsupportedSchemeError {
           scheme: scheme.to_string(),
-          specifier: specifier.clone(),
+          url: url.clone(),
         })
         .into_box(),
       )
@@ -551,30 +549,27 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
 
   fn fetch_cached_no_follow(
     &self,
-    specifier: &Url,
+    url: &Url,
     maybe_checksum: Option<Checksum<'_>>,
   ) -> Result<Option<FileOrRedirect>, FetchCachedNoFollowError> {
-    debug!(
-      "FileFetcher::fetch_cached_no_follow - specifier: {}",
-      specifier
-    );
+    debug!("FileFetcher::fetch_cached_no_follow - specifier: {}", url);
 
     let cache_key =
       self
         .http_cache
-        .cache_item_key(specifier)
+        .cache_item_key(url)
         .map_err(|source| CacheReadError {
-          specifier: specifier.clone(),
+          url: url.clone(),
           source,
         })?;
     match self.http_cache.get(&cache_key, maybe_checksum) {
-      Ok(Some(entry)) => Ok(Some(FileOrRedirect::from_deno_cache_entry(
-        specifier, entry,
-      )?)),
+      Ok(Some(entry)) => {
+        Ok(Some(FileOrRedirect::from_deno_cache_entry(url, entry)?))
+      }
       Ok(None) => Ok(None),
       Err(CacheReadFileError::Io(source)) => Err(
         FetchCachedNoFollowErrorKind::CacheRead(CacheReadError {
-          specifier: specifier.clone(),
+          url: url.clone(),
           source,
         })
         .into_box(),
@@ -587,14 +582,11 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
 
   /// Convert a data URL into a file, resulting in an error if the URL is
   /// invalid.
-  fn fetch_data_url(
-    &self,
-    specifier: &Url,
-  ) -> Result<File, DataUrlDecodeError> {
+  fn fetch_data_url(&self, url: &Url) -> Result<File, DataUrlDecodeError> {
     fn parse(
-      specifier: &Url,
+      url: &Url,
     ) -> Result<(Vec<u8>, HashMap<String, String>), DataUrlDecodeError> {
-      let url = DataUrl::process(specifier.as_str()).map_err(|source| {
+      let url = DataUrl::process(url.as_str()).map_err(|source| {
         DataUrlDecodeError {
           source: DataUrlDecodeSourceError::DataUrl(source),
         }
@@ -610,10 +602,10 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
       Ok((bytes, headers))
     }
 
-    debug!("FileFetcher::fetch_data_url() - specifier: {}", specifier);
-    let (bytes, headers) = parse(specifier)?;
+    debug!("FileFetcher::fetch_data_url() - specifier: {}", url);
+    let (bytes, headers) = parse(url)?;
     Ok(File {
-      specifier: specifier.clone(),
+      url: url.clone(),
       maybe_headers: Some(headers),
       source: Arc::from(bytes),
     })
@@ -622,24 +614,24 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
   /// Get a blob URL.
   async fn fetch_blob_url(
     &self,
-    specifier: &Url,
+    url: &Url,
   ) -> Result<File, FetchNoFollowError> {
-    debug!("FileFetcher::fetch_blob_url() - specifier: {}", specifier);
+    debug!("FileFetcher::fetch_blob_url() - specifier: {}", url);
     let blob = self
       .blob_store
-      .get(specifier)
+      .get(url)
       .await
       .map_err(|err| FetchNoFollowErrorKind::ReadingBlobUrl {
-        specifier: specifier.clone(),
+        url: url.clone(),
         source: err,
       })?
-      .ok_or_else(|| FetchNoFollowErrorKind::NotFound(specifier.clone()))?;
+      .ok_or_else(|| FetchNoFollowErrorKind::NotFound(url.clone()))?;
 
     let headers =
       HashMap::from([("content-type".to_string(), blob.media_type.clone())]);
 
     Ok(File {
-      specifier: specifier.clone(),
+      url: url.clone(),
       maybe_headers: Some(headers),
       source: Arc::from(blob.bytes),
     })
@@ -647,20 +639,17 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
 
   async fn fetch_remote_no_follow(
     &self,
-    specifier: &Url,
+    url: &Url,
     maybe_accept: Option<&str>,
     cache_setting: &CacheSetting,
     maybe_checksum: Option<Checksum<'_>>,
     maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
   ) -> Result<FileOrRedirect, FetchNoFollowError> {
-    debug!(
-      "FileFetcher::fetch_remote_no_follow - specifier: {}",
-      specifier
-    );
+    debug!("FileFetcher::fetch_remote_no_follow - specifier: {}", url);
 
-    if self.should_use_cache(specifier, cache_setting) {
+    if self.should_use_cache(url, cache_setting) {
       if let Some(file_or_redirect) =
-        self.fetch_cached_no_follow(specifier, maybe_checksum)?
+        self.fetch_cached_no_follow(url, maybe_checksum)?
       {
         return Ok(file_or_redirect);
       }
@@ -668,16 +657,13 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
 
     if *cache_setting == CacheSetting::Only {
       return Err(
-        FetchNoFollowErrorKind::NotCached {
-          specifier: specifier.clone(),
-        }
-        .into_box(),
+        FetchNoFollowErrorKind::NotCached { url: url.clone() }.into_box(),
       );
     }
 
     let maybe_etag_cache_entry = self
       .http_cache
-      .cache_item_key(specifier)
+      .cache_item_key(url)
       .ok()
       .and_then(|key| self.http_cache.get(&key, maybe_checksum).ok().flatten())
       .and_then(|mut cache_entry| {
@@ -688,10 +674,10 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
           .map(|etag| (cache_entry, etag))
       });
 
-    let maybe_auth_token = self.auth_tokens.get(specifier);
+    let maybe_auth_token = self.auth_tokens.get(url);
     match self
       .send_request(SendRequestArgs {
-        url: specifier,
+        url,
         maybe_accept,
         maybe_auth: maybe_auth.clone(),
         maybe_auth_token,
@@ -703,35 +689,33 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
     {
       SendRequestResponse::NotModified => {
         let (cache_entry, _) = maybe_etag_cache_entry.unwrap();
-        FileOrRedirect::from_deno_cache_entry(specifier, cache_entry).map_err(
-          |err| FetchNoFollowErrorKind::RedirectResolution(err).into_box(),
-        )
+        FileOrRedirect::from_deno_cache_entry(url, cache_entry).map_err(|err| {
+          FetchNoFollowErrorKind::RedirectResolution(err).into_box()
+        })
       }
       SendRequestResponse::Redirect(redirect_url, headers) => {
-        self
-          .http_cache
-          .set(specifier, headers, &[])
-          .map_err(|source| FetchNoFollowErrorKind::CacheSave {
-            specifier: specifier.clone(),
+        self.http_cache.set(url, headers, &[]).map_err(|source| {
+          FetchNoFollowErrorKind::CacheSave {
+            url: url.clone(),
             source,
-          })?;
+          }
+        })?;
         Ok(FileOrRedirect::Redirect(redirect_url))
       }
       SendRequestResponse::Code(bytes, headers) => {
-        self
-          .http_cache
-          .set(specifier, headers.clone(), &bytes)
-          .map_err(|source| FetchNoFollowErrorKind::CacheSave {
-            specifier: specifier.clone(),
+        self.http_cache.set(url, headers.clone(), &bytes).map_err(
+          |source| FetchNoFollowErrorKind::CacheSave {
+            url: url.clone(),
             source,
-          })?;
+          },
+        )?;
         if let Some(checksum) = &maybe_checksum {
           checksum
-            .check(specifier, &bytes)
+            .check(url, &bytes)
             .map_err(|err| FetchNoFollowErrorKind::ChecksumIntegrity(*err))?;
         }
         Ok(FileOrRedirect::File(File {
-          specifier: specifier.clone(),
+          url: url.clone(),
           maybe_headers: Some(headers),
           source: Arc::from(bytes),
         }))
@@ -740,16 +724,12 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
   }
 
   /// Returns if the cache should be used for a given specifier.
-  fn should_use_cache(
-    &self,
-    specifier: &Url,
-    cache_setting: &CacheSetting,
-  ) -> bool {
+  fn should_use_cache(&self, url: &Url, cache_setting: &CacheSetting) -> bool {
     match cache_setting {
       CacheSetting::ReloadAll => false,
       CacheSetting::Use | CacheSetting::Only => true,
       CacheSetting::RespectHeaders => {
-        let Ok(cache_key) = self.http_cache.cache_item_key(specifier) else {
+        let Ok(cache_key) = self.http_cache.cache_item_key(url) else {
           return false;
         };
         let Ok(Some(headers)) = self.http_cache.read_headers(&cache_key) else {
@@ -765,7 +745,7 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
         cache_semantics.should_use()
       }
       CacheSetting::ReloadSome(list) => {
-        let mut url = specifier.clone();
+        let mut url = url.clone();
         url.set_fragment(None);
         if list.iter().any(|x| x == url.as_str()) {
           return false;
@@ -846,7 +826,7 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
       Err(err) => match err {
         SendError::Failed(err) => Err(
           FetchNoFollowErrorKind::FetchingRemote {
-            specifier: args.url.clone(),
+            url: args.url.clone(),
             source: err,
           }
           .into_box(),
@@ -856,7 +836,7 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
         }
         SendError::StatusCode(status_code) => Err(
           FetchNoFollowErrorKind::ClientError {
-            specifier: args.url.clone(),
+            url: args.url.clone(),
             status_code,
           }
           .into_box(),
@@ -868,9 +848,9 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
   /// Fetch a source file from the local file system.
   pub fn fetch_local(
     &self,
-    specifier: &Url,
+    url: &Url,
   ) -> Result<Option<File>, FetchLocalError> {
-    let local = url_to_file_path(specifier)?;
+    let local = url_to_file_path(url)?;
     // If it doesnt have a extension, we want to treat it as typescript by default
     let headers = if local.extension().is_none() {
       Some(HashMap::from([(
@@ -888,7 +868,7 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
       Err(err) => {
         return Err(
           FetchLocalErrorKind::ReadingFile(FailedReadingLocalFileError {
-            specifier: specifier.clone(),
+            url: url.clone(),
             source: err,
           })
           .into_box(),
@@ -897,7 +877,7 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
     };
 
     Ok(Some(File {
-      specifier: specifier.clone(),
+      url: url.clone(),
       maybe_headers: headers,
       source: bytes.into(),
     }))

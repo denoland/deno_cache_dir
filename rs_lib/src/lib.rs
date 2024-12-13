@@ -7,6 +7,7 @@ mod env;
 pub mod file_fetcher;
 mod global;
 mod local;
+pub mod memory;
 pub mod npm;
 
 pub use cache::url_to_filename;
