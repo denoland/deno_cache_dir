@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. MIT license.
 
+use deno_error::JsError;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -32,7 +33,8 @@ impl GlobalToLocalCopy {
   }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
+#[class(type)]
 #[error("Integrity check failed for {}\n\nActual: {}\nExpected: {}", .url, .actual, .expected)]
 pub struct ChecksumIntegrityError {
   pub url: Url,
@@ -50,6 +52,23 @@ impl<'a> Checksum<'a> {
 
   pub fn as_str(&self) -> &str {
     self.0
+  }
+
+  pub fn check(
+    &self,
+    url: &Url,
+    content: &[u8],
+  ) -> Result<(), Box<ChecksumIntegrityError>> {
+    let actual = checksum(content);
+    if self.as_str() != actual {
+      Err(Box::new(ChecksumIntegrityError {
+        url: url.clone(),
+        expected: self.as_str().to_string(),
+        actual,
+      }))
+    } else {
+      Ok(())
+    }
   }
 }
 
@@ -102,7 +121,7 @@ pub enum CacheReadFileError {
   ChecksumIntegrity(Box<ChecksumIntegrityError>),
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SerializedCachedUrlMetadata {
   pub headers: HeadersMap,
   pub url: String,
@@ -111,7 +130,7 @@ pub struct SerializedCachedUrlMetadata {
   pub time: Option<u64>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CacheEntry {
   pub metadata: SerializedCachedUrlMetadata,
   pub content: Cow<'static, [u8]>,

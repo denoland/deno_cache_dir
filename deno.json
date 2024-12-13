@@ -4,7 +4,7 @@
   "tasks": {
     "test": "deno test --allow-read --allow-write --allow-net --allow-env",
     "build": "deno task wasmbuild",
-    "wasmbuild": "deno run -A jsr:@deno/wasmbuild@0.16.0 --sync --features wasm"
+    "wasmbuild": "deno run -A jsr:@deno/wasmbuild@0.16.0 --sync --no-default-features --features wasm"
   },
   "lint": {
     "rules": {
