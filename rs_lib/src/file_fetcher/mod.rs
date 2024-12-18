@@ -181,7 +181,8 @@ pub struct CacheReadError {
   pub source: std::io::Error,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
+#[class(generic)]
 #[error("Failed reading location header for '{}'{}", .request_url, .maybe_location.as_ref().map(|location| format!(" to '{}'", location)).unwrap_or_default())]
 pub struct RedirectHeaderParseError {
   pub request_url: Url,
@@ -344,15 +345,18 @@ impl From<FetchLocalError> for FetchNoFollowError {
   }
 }
 
-#[derive(Debug, Boxed)]
+#[derive(Debug, Boxed, JsError)]
 struct FetchCachedNoFollowError(pub Box<FetchCachedNoFollowErrorKind>);
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
 enum FetchCachedNoFollowErrorKind {
+  #[class(inherit)]
   #[error(transparent)]
   ChecksumIntegrity(ChecksumIntegrityError),
+  #[class(inherit)]
   #[error(transparent)]
   CacheRead(#[from] CacheReadError),
+  #[class(inherit)]
   #[error(transparent)]
   RedirectResolution(#[from] RedirectResolutionError),
 }

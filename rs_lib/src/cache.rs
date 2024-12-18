@@ -113,10 +113,12 @@ pub fn url_to_filename(url: &Url) -> std::io::Result<PathBuf> {
   Ok(cache_filename)
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
 pub enum CacheReadFileError {
+  #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
+  #[class(inherit)]
   #[error(transparent)]
   ChecksumIntegrity(Box<ChecksumIntegrityError>),
 }
