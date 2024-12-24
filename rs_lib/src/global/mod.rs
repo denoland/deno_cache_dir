@@ -6,11 +6,12 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use serde::Deserialize;
+use sys_traits::FsMetadataValue;
 use url::Url;
 
 use super::cache::HttpCache;
 use super::cache::HttpCacheItemKey;
-use super::env::DenoCacheEnv;
+use super::sys::DenoCacheSys;
 use crate::cache::url_to_filename;
 use crate::cache::CacheEntry;
 use crate::cache::CacheReadFileError;
@@ -21,16 +22,16 @@ use crate::common::HeadersMap;
 mod cache_file;
 
 #[derive(Debug)]
-pub struct GlobalHttpCache<Env: DenoCacheEnv> {
+pub struct GlobalHttpCache<Sys: DenoCacheSys> {
   path: PathBuf,
-  pub(crate) env: Env,
+  pub(crate) sys: Sys,
 }
 
-impl<Env: DenoCacheEnv> GlobalHttpCache<Env> {
-  pub fn new(path: PathBuf, env: Env) -> Self {
+impl<Sys: DenoCacheSys> GlobalHttpCache<Sys> {
+  pub fn new(path: PathBuf, sys: Sys) -> Self {
     #[cfg(not(feature = "wasm"))]
     assert!(path.is_absolute());
-    Self { path, env }
+    Self { path, sys }
   }
 
   pub fn get_global_cache_location(&self) -> &PathBuf {
@@ -57,7 +58,7 @@ impl<Env: DenoCacheEnv> GlobalHttpCache<Env> {
   }
 }
 
-impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
+impl<Env: DenoCacheSys> HttpCache for GlobalHttpCache<Env> {
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
@@ -74,7 +75,7 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
     let Ok(cache_filepath) = self.get_cache_filepath(url) else {
       return false;
     };
-    self.env.is_file(&cache_filepath)
+    self.sys.fs_is_file(&cache_filepath).unwrap_or(false)
   }
 
   fn read_modified_time(
@@ -84,7 +85,14 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
     #[cfg(debug_assertions)]
     debug_assert!(!key.is_local_key);
 
-    self.env.modified(self.key_file_path(key))
+    match self.sys.fs_metadata(self.key_file_path(key)) {
+      Ok(metadata) => match metadata.modified() {
+        Ok(time) => Ok(Some(time)),
+        Err(_) => Ok(Some(self.sys.sys_time_now())),
+      },
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+      Err(err) => Err(err),
+    }
   }
 
   fn set(
@@ -95,14 +103,14 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
   ) -> std::io::Result<()> {
     let cache_filepath = self.get_cache_filepath(url)?;
     cache_file::write(
-      &self.env,
+      &self.sys,
       &cache_filepath,
       content,
       &SerializedCachedUrlMetadata {
         time: Some(
           self
-            .env
-            .time_now()
+            .sys
+            .sys_time_now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs(),
@@ -123,7 +131,7 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
     #[cfg(debug_assertions)]
     debug_assert!(!key.is_local_key);
 
-    let maybe_file = cache_file::read(&self.env, self.key_file_path(key))?;
+    let maybe_file = cache_file::read(&self.sys, self.key_file_path(key))?;
 
     if let Some(file) = &maybe_file {
       if let Some(expected_checksum) = maybe_checksum {
@@ -150,7 +158,7 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
     debug_assert!(!key.is_local_key);
 
     let maybe_metadata = cache_file::read_metadata::<SerializedHeaders>(
-      &self.env,
+      &self.sys,
       self.key_file_path(key),
     )?;
     Ok(maybe_metadata.map(|m| m.headers))
@@ -169,7 +177,7 @@ impl<Env: DenoCacheEnv> HttpCache for GlobalHttpCache<Env> {
     #[cfg(debug_assertions)]
     debug_assert!(!key.is_local_key);
     let maybe_metadata = cache_file::read_metadata::<SerializedTime>(
-      &self.env,
+      &self.sys,
       self.key_file_path(key),
     )?;
     Ok(maybe_metadata.and_then(|m| {
