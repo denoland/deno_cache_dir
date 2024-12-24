@@ -11,38 +11,41 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use deno_media_type::MediaType;
+use deno_path_util::atomic_write_file_with_retries;
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
+use sys_traits::FsMetadataValue;
 use url::Url;
 
 use crate::cache::CacheEntry;
 use crate::cache::CacheReadFileError;
 use crate::cache::GlobalToLocalCopy;
 use crate::SerializedCachedUrlMetadata;
+use crate::CACHE_PERM;
 
 use super::common::base_url_to_filename_parts;
 use super::common::checksum;
 use super::common::HeadersMap;
 use super::global::GlobalHttpCache;
 use super::Checksum;
-use super::DenoCacheEnv;
+use super::DenoCacheSys;
 use super::HttpCache;
 use super::HttpCacheItemKey;
 
 /// A vendor/ folder http cache for the lsp that provides functionality
 /// for doing a reverse mapping.
 #[derive(Debug)]
-pub struct LocalLspHttpCache<Env: DenoCacheEnv> {
+pub struct LocalLspHttpCache<Env: DenoCacheSys> {
   cache: LocalHttpCache<Env>,
 }
 
-impl<Env: DenoCacheEnv> LocalLspHttpCache<Env> {
+impl<Env: DenoCacheSys> LocalLspHttpCache<Env> {
   pub fn new(path: PathBuf, global_cache: Arc<GlobalHttpCache<Env>>) -> Self {
     #[cfg(not(feature = "wasm"))]
     assert!(path.is_absolute());
     let manifest = LocalCacheManifest::new_for_lsp(
       path.join("manifest.json"),
-      global_cache.env.clone(),
+      global_cache.sys.clone(),
     );
     Self {
       cache: LocalHttpCache {
@@ -71,7 +74,7 @@ impl<Env: DenoCacheEnv> LocalLspHttpCache<Env> {
       url_to_local_sub_path(url, maybe_content_type).ok()?
     };
     let path = sub_path.as_path_from_root(&self.cache.path);
-    if self.cache.fs().is_file(&path) {
+    if self.cache.env().fs_is_file_no_err(&path) {
       Url::from_file_path(path).ok()
     } else {
       None
@@ -144,7 +147,7 @@ impl<Env: DenoCacheEnv> LocalLspHttpCache<Env> {
   }
 }
 
-impl<Env: DenoCacheEnv> HttpCache for LocalLspHttpCache<Env> {
+impl<Env: DenoCacheSys> HttpCache for LocalLspHttpCache<Env> {
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
@@ -196,14 +199,14 @@ impl<Env: DenoCacheEnv> HttpCache for LocalLspHttpCache<Env> {
 }
 
 #[derive(Debug)]
-pub struct LocalHttpCache<Env: DenoCacheEnv> {
+pub struct LocalHttpCache<Env: DenoCacheSys> {
   path: PathBuf,
   manifest: LocalCacheManifest<Env>,
   global_cache: Arc<GlobalHttpCache<Env>>,
   allow_global_to_local: GlobalToLocalCopy,
 }
 
-impl<Env: DenoCacheEnv> LocalHttpCache<Env> {
+impl<Env: DenoCacheSys> LocalHttpCache<Env> {
   pub fn new(
     path: PathBuf,
     global_cache: Arc<GlobalHttpCache<Env>>,
@@ -213,7 +216,7 @@ impl<Env: DenoCacheEnv> LocalHttpCache<Env> {
     assert!(path.is_absolute());
     let manifest = LocalCacheManifest::new(
       path.join("manifest.json"),
-      global_cache.env.clone(),
+      global_cache.sys.clone(),
     );
     Self {
       path,
@@ -224,8 +227,8 @@ impl<Env: DenoCacheEnv> LocalHttpCache<Env> {
   }
 
   #[inline]
-  fn fs(&self) -> &Env {
-    &self.global_cache.env
+  fn env(&self) -> &Env {
+    &self.global_cache.sys
   }
 
   fn get_url_headers(&self, url: &Url) -> std::io::Result<Option<HeadersMap>> {
@@ -236,7 +239,10 @@ impl<Env: DenoCacheEnv> LocalHttpCache<Env> {
     // if the local path exists, don't copy the headers from the global cache
     // to the local
     let local_path = url_to_local_sub_path(url, None)?;
-    if self.fs().is_file(&local_path.as_path_from_root(&self.path)) {
+    if self
+      .env()
+      .fs_is_file_no_err(&local_path.as_path_from_root(&self.path))
+    {
       return Ok(Some(Default::default()));
     }
 
@@ -264,7 +270,7 @@ impl<Env: DenoCacheEnv> LocalHttpCache<Env> {
   }
 }
 
-impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
+impl<Env: DenoCacheSys> HttpCache for LocalHttpCache<Env> {
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
@@ -295,11 +301,13 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
     if let Some(headers) = self.get_url_headers(key.url)? {
       let local_path =
         url_to_local_sub_path(key.url, headers_content_type(&headers))?;
-      if let Ok(Some(modified_time)) = self
-        .fs()
-        .modified(&local_path.as_path_from_root(&self.path))
+      if let Ok(metadata) = self
+        .env()
+        .fs_metadata(&local_path.as_path_from_root(&self.path))
       {
-        return Ok(Some(modified_time));
+        if let Ok(modified_time) = metadata.modified() {
+          return Ok(Some(modified_time));
+        }
       }
     }
 
@@ -319,9 +327,12 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
 
     if !is_redirect {
       // Cache content
-      self
-        .fs()
-        .atomic_write_file(&sub_path.as_path_from_root(&self.path), content)?;
+      atomic_write_file_with_retries(
+        self.env(),
+        &sub_path.as_path_from_root(&self.path),
+        content,
+        CACHE_PERM,
+      )?;
     }
 
     self.manifest.insert_data(sub_path, url.clone(), headers);
@@ -349,7 +360,7 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
           let local_file_path =
             url_to_local_sub_path(key.url, headers_content_type(&headers))?
               .as_path_from_root(&self.path);
-          let file_bytes_result = self.fs().read_file_bytes(&local_file_path);
+          let file_bytes_result = self.env().fs_read(&local_file_path);
           match file_bytes_result {
             Ok(bytes) => bytes,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
@@ -359,9 +370,12 @@ impl<Env: DenoCacheEnv> HttpCache for LocalHttpCache<Env> {
                 let maybe_global_cache_file =
                   self.global_cache.get(&global_key, maybe_checksum)?;
                 if let Some(file) = maybe_global_cache_file {
-                  self
-                    .fs()
-                    .atomic_write_file(&local_file_path, &file.content)?;
+                  atomic_write_file_with_retries(
+                    self.env(),
+                    &local_file_path,
+                    &file.content,
+                    CACHE_PERM,
+                  )?;
                   file.content
                 } else {
                   return Ok(None);
@@ -605,32 +619,32 @@ fn url_to_local_sub_path<'a>(
 }
 
 #[derive(Debug)]
-struct LocalCacheManifest<Env: DenoCacheEnv> {
-  env: Env,
+struct LocalCacheManifest<Sys: DenoCacheSys> {
+  sys: Sys,
   file_path: PathBuf,
   data: RwLock<manifest::LocalCacheManifestData>,
 }
 
-impl<Env: DenoCacheEnv> LocalCacheManifest<Env> {
-  pub fn new(file_path: PathBuf, env: Env) -> Self {
-    Self::new_internal(file_path, false, env)
+impl<Sys: DenoCacheSys> LocalCacheManifest<Sys> {
+  pub fn new(file_path: PathBuf, sys: Sys) -> Self {
+    Self::new_internal(file_path, false, sys)
   }
 
-  pub fn new_for_lsp(file_path: PathBuf, env: Env) -> Self {
-    Self::new_internal(file_path, true, env)
+  pub fn new_for_lsp(file_path: PathBuf, sys: Sys) -> Self {
+    Self::new_internal(file_path, true, sys)
   }
 
   fn new_internal(
     file_path: PathBuf,
     use_reverse_mapping: bool,
-    env: Env,
+    sys: Sys,
   ) -> Self {
-    let text = env
-      .read_file_bytes(&file_path)
+    let text = sys
+      .fs_read(&file_path)
       .ok()
       .and_then(|bytes| String::from_utf8(bytes.into_owned()).ok());
     Self {
-      env,
+      sys,
       data: RwLock::new(manifest::LocalCacheManifestData::new(
         text.as_deref(),
         use_reverse_mapping,
@@ -721,9 +735,12 @@ impl<Env: DenoCacheEnv> LocalCacheManifest<Env> {
     if has_changed {
       // don't bother ensuring the directory here because it will
       // eventually be created by files being added to the cache
-      let result = self
-        .env
-        .atomic_write_file(&self.file_path, data.as_json().as_bytes());
+      let result = atomic_write_file_with_retries(
+        &self.sys,
+        &self.file_path,
+        data.as_json().as_bytes(),
+        CACHE_PERM,
+      );
       if let Err(err) = result {
         log::debug!("Failed saving local cache manifest: {:#}", err);
       }

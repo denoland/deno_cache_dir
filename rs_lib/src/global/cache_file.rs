@@ -4,19 +4,36 @@ use std::borrow::Cow;
 use std::io::ErrorKind;
 use std::path::Path;
 
+use deno_path_util::atomic_write_file_with_retries;
 use serde::de::DeserializeOwned;
+use sys_traits::FsCreateDirAll;
+use sys_traits::FsOpen;
+use sys_traits::FsRead;
+use sys_traits::FsRemoveFile;
+use sys_traits::FsRename;
+use sys_traits::FsSymlinkMetadata;
+use sys_traits::SystemRandom;
+use sys_traits::ThreadSleep;
 
 use crate::cache::CacheEntry;
-use crate::DenoCacheEnv;
 use crate::SerializedCachedUrlMetadata;
+use crate::CACHE_PERM;
 
 // File format:
 // <content>\n// denoCacheMetadata=<metadata><EOF>
 
 const LAST_LINE_PREFIX: &[u8] = b"\n// denoCacheMetadata=";
 
-pub fn write(
-  env: &impl DenoCacheEnv,
+pub fn write<
+  TSys: FsCreateDirAll
+    + FsSymlinkMetadata
+    + FsOpen
+    + FsRemoveFile
+    + FsRename
+    + ThreadSleep
+    + SystemRandom,
+>(
+  sys: &TSys,
   path: &Path,
   content: &[u8],
   metadata: &SerializedCachedUrlMetadata,
@@ -42,15 +59,15 @@ pub fn write(
   result.extend(LAST_LINE_PREFIX);
   serde_json::to_writer(&mut result, &metadata).unwrap();
   debug_assert!(result.len() < capacity, "{} < {}", result.len(), capacity);
-  env.atomic_write_file(path, &result)?;
+  atomic_write_file_with_retries(sys, path, &result, CACHE_PERM)?;
   Ok(())
 }
 
 pub fn read(
-  env: &impl DenoCacheEnv,
+  sys: &impl FsRead,
   path: &Path,
 ) -> std::io::Result<Option<CacheEntry>> {
-  let original_file_bytes = match env.read_file_bytes(path) {
+  let original_file_bytes = match sys.fs_read(path) {
     Ok(file) => file,
     Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
     Err(err) => return Err(err),
@@ -79,10 +96,10 @@ pub fn read(
 }
 
 pub fn read_metadata<TMetadata: DeserializeOwned>(
-  env: &impl DenoCacheEnv,
+  sys: &impl FsRead,
   path: &Path,
 ) -> std::io::Result<Option<TMetadata>> {
-  let file_bytes = match env.read_file_bytes(path) {
+  let file_bytes = match sys.fs_read(path) {
     Ok(file) => file,
     Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
     Err(err) => return Err(err),

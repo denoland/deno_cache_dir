@@ -8,7 +8,7 @@ use deno_path_util::normalize_path;
 use deno_path_util::url_from_directory_path;
 use url::Url;
 
-use crate::DenoCacheEnv;
+use crate::DenoCacheSys;
 
 pub struct NpmCacheFolderId {
   /// Package name.
@@ -31,20 +31,20 @@ pub struct NpmCacheDir {
 }
 
 impl NpmCacheDir {
-  pub fn new<Env: DenoCacheEnv>(
-    env: &Env,
+  pub fn new<Sys: DenoCacheSys>(
+    sys: &Sys,
     root_dir: PathBuf,
     known_registries_urls: Vec<Url>,
   ) -> Self {
-    fn try_get_canonicalized_root_dir<Env: DenoCacheEnv>(
-      env: &Env,
+    fn try_get_canonicalized_root_dir<Sys: DenoCacheSys>(
+      sys: &Sys,
       root_dir: &Path,
     ) -> Result<PathBuf, std::io::Error> {
-      match env.canonicalize_path(root_dir) {
+      match sys.fs_canonicalize(root_dir) {
         Ok(path) => Ok(path),
         Err(err) if err.kind() == ErrorKind::NotFound => {
-          env.create_dir_all(root_dir)?;
-          env.canonicalize_path(root_dir)
+          sys.fs_create_dir_all(root_dir)?;
+          sys.fs_canonicalize(root_dir)
         }
         Err(err) => Err(err),
       }
@@ -53,7 +53,7 @@ impl NpmCacheDir {
     // this may fail on readonly file systems, so just ignore if so
     let root_dir = normalize_path(root_dir);
     let root_dir =
-      try_get_canonicalized_root_dir(env, &root_dir).unwrap_or(root_dir);
+      try_get_canonicalized_root_dir(sys, &root_dir).unwrap_or(root_dir);
     let root_dir_url = url_from_directory_path(&root_dir).unwrap();
 
     let known_registries_dirnames: Vec<_> = known_registries_urls
@@ -258,9 +258,8 @@ fn is_banned_path_char(c: char) -> bool {
 
 #[cfg(test)]
 mod test {
+  use sys_traits::impls::RealSys;
   use url::Url;
-
-  use crate::TestRealDenoCacheEnv;
 
   use super::NpmCacheDir;
 
@@ -269,7 +268,7 @@ mod test {
     #[allow(clippy::disallowed_methods)]
     let root_dir = std::env::current_dir().unwrap().canonicalize().unwrap();
     let registry_url = Url::parse("https://registry.npmjs.org/").unwrap();
-    let env = TestRealDenoCacheEnv;
+    let env = RealSys;
     let cache =
       NpmCacheDir::new(&env, root_dir.clone(), vec![registry_url.clone()]);
 

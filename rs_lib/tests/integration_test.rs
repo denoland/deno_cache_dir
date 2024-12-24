@@ -13,8 +13,8 @@ use deno_cache_dir::GlobalToLocalCopy;
 use deno_cache_dir::HttpCache;
 use deno_cache_dir::LocalHttpCache;
 use deno_cache_dir::LocalLspHttpCache;
-use deno_cache_dir::TestRealDenoCacheEnv;
 use serde_json::json;
+use sys_traits::impls::RealSys;
 use tempfile::TempDir;
 use url::Url;
 
@@ -31,8 +31,8 @@ fn test_global_create_cache() {
   // doesn't make sense to return error in such specific scenarios.
   // For more details check issue:
   // https://github.com/denoland/deno/issues/5688
-  let fs = TestRealDenoCacheEnv;
-  let cache = GlobalHttpCache::new(cache_path.clone(), fs);
+  let sys = RealSys;
+  let cache = GlobalHttpCache::new(cache_path.clone(), sys);
   assert!(!cache.get_global_cache_location().exists());
   let url = Url::parse("http://example.com/foo/bar.js").unwrap();
   cache.set(&url, Default::default(), b"hello world").unwrap();
@@ -43,8 +43,8 @@ fn test_global_create_cache() {
 #[test]
 fn test_global_get_set() {
   let dir = TempDir::new().unwrap();
-  let fs = TestRealDenoCacheEnv;
-  let cache = GlobalHttpCache::new(dir.path().to_path_buf(), fs);
+  let sys = RealSys;
+  let cache = GlobalHttpCache::new(dir.path().to_path_buf(), sys);
   let url = Url::parse("https://deno.land/x/welcome.ts").unwrap();
   let mut headers = HashMap::new();
   headers.insert(
@@ -102,9 +102,9 @@ fn test_local_global_cache() {
   let temp_dir = TempDir::new().unwrap();
   let global_cache_path = temp_dir.path().join("global");
   let local_cache_path = temp_dir.path().join("local");
-  let fs = TestRealDenoCacheEnv;
+  let sys = RealSys;
   let global_cache =
-    Arc::new(GlobalHttpCache::new(global_cache_path.clone(), fs));
+    Arc::new(GlobalHttpCache::new(global_cache_path.clone(), sys));
   let local_cache = LocalHttpCache::new(
     local_cache_path.clone(),
     global_cache.clone(),
@@ -522,9 +522,9 @@ fn test_lsp_local_cache() {
   let temp_dir = TempDir::new().unwrap();
   let global_cache_path = temp_dir.path().join("global");
   let local_cache_path = temp_dir.path().join("local");
-  let fs = TestRealDenoCacheEnv;
+  let sys = RealSys;
   let global_cache =
-    Arc::new(GlobalHttpCache::new(global_cache_path.to_path_buf(), fs));
+    Arc::new(GlobalHttpCache::new(global_cache_path.to_path_buf(), sys));
   let local_cache = LocalHttpCache::new(
     local_cache_path.to_path_buf(),
     global_cache.clone(),
