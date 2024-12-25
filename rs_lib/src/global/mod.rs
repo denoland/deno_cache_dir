@@ -28,7 +28,7 @@ pub struct GlobalHttpCache<Sys: DenoCacheSys> {
 }
 
 impl<Sys: DenoCacheSys> GlobalHttpCache<Sys> {
-  pub fn new(path: PathBuf, sys: Sys) -> Self {
+  pub fn new(sys: Sys, path: PathBuf) -> Self {
     #[cfg(not(feature = "wasm"))]
     assert!(path.is_absolute());
     Self { path, sys }

@@ -7,11 +7,11 @@ use std::path::Path;
 use deno_path_util::atomic_write_file_with_retries;
 use serde::de::DeserializeOwned;
 use sys_traits::FsCreateDirAll;
+use sys_traits::FsMetadata;
 use sys_traits::FsOpen;
 use sys_traits::FsRead;
 use sys_traits::FsRemoveFile;
 use sys_traits::FsRename;
-use sys_traits::FsSymlinkMetadata;
 use sys_traits::SystemRandom;
 use sys_traits::ThreadSleep;
 
@@ -26,7 +26,7 @@ const LAST_LINE_PREFIX: &[u8] = b"\n// denoCacheMetadata=";
 
 pub fn write<
   TSys: FsCreateDirAll
-    + FsSymlinkMetadata
+    + FsMetadata
     + FsOpen
     + FsRemoveFile
     + FsRename

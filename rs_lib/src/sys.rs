@@ -7,7 +7,6 @@ use sys_traits::FsOpen;
 use sys_traits::FsRead;
 use sys_traits::FsRemoveFile;
 use sys_traits::FsRename;
-use sys_traits::FsSymlinkMetadata;
 use sys_traits::SystemRandom;
 use sys_traits::SystemTimeNow;
 use sys_traits::ThreadSleep;
@@ -20,7 +19,6 @@ pub trait DenoCacheSys:
   + FsCreateDirAll
   + FsCanonicalize
   + FsMetadata
-  + FsSymlinkMetadata
   + FsOpen
   + FsRead
   + FsRemoveFile

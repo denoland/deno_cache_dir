@@ -32,7 +32,7 @@ fn test_global_create_cache() {
   // For more details check issue:
   // https://github.com/denoland/deno/issues/5688
   let sys = RealSys;
-  let cache = GlobalHttpCache::new(cache_path.clone(), sys);
+  let cache = GlobalHttpCache::new(sys, cache_path.clone());
   assert!(!cache.get_global_cache_location().exists());
   let url = Url::parse("http://example.com/foo/bar.js").unwrap();
   cache.set(&url, Default::default(), b"hello world").unwrap();
@@ -44,7 +44,7 @@ fn test_global_create_cache() {
 fn test_global_get_set() {
   let dir = TempDir::new().unwrap();
   let sys = RealSys;
-  let cache = GlobalHttpCache::new(dir.path().to_path_buf(), sys);
+  let cache = GlobalHttpCache::new(sys, dir.path().to_path_buf());
   let url = Url::parse("https://deno.land/x/welcome.ts").unwrap();
   let mut headers = HashMap::new();
   headers.insert(
@@ -104,7 +104,7 @@ fn test_local_global_cache() {
   let local_cache_path = temp_dir.path().join("local");
   let sys = RealSys;
   let global_cache =
-    Arc::new(GlobalHttpCache::new(global_cache_path.clone(), sys));
+    Arc::new(GlobalHttpCache::new(sys, global_cache_path.clone()));
   let local_cache = LocalHttpCache::new(
     local_cache_path.clone(),
     global_cache.clone(),
@@ -524,7 +524,7 @@ fn test_lsp_local_cache() {
   let local_cache_path = temp_dir.path().join("local");
   let sys = RealSys;
   let global_cache =
-    Arc::new(GlobalHttpCache::new(global_cache_path.to_path_buf(), sys));
+    Arc::new(GlobalHttpCache::new(sys, global_cache_path.to_path_buf()));
   let local_cache = LocalHttpCache::new(
     local_cache_path.to_path_buf(),
     global_cache.clone(),

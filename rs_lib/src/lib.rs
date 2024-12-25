@@ -2,6 +2,7 @@
 
 mod cache;
 mod common;
+mod deno_dir;
 #[cfg(feature = "file_fetcher")]
 pub mod file_fetcher;
 mod global;
@@ -23,6 +24,7 @@ pub use cache::HttpCache;
 pub use cache::HttpCacheItemKey;
 pub use cache::SerializedCachedUrlMetadata;
 pub use common::HeadersMap;
+pub use deno_dir::resolve_deno_dir;
 pub use global::GlobalHttpCache;
 pub use local::LocalHttpCache;
 pub use local::LocalLspHttpCache;
@@ -38,6 +40,8 @@ pub mod wasm {
   use js_sys::Object;
   use js_sys::Reflect;
   use js_sys::Uint8Array;
+  use sys_traits::impls::wasm_path_to_str;
+  use sys_traits::impls::wasm_string_to_path;
   use sys_traits::impls::RealSys;
   use url::Url;
   use wasm_bindgen::prelude::*;
@@ -45,6 +49,7 @@ pub mod wasm {
   use crate::cache::CacheEntry;
   use crate::cache::GlobalToLocalCopy;
   use crate::common::HeadersMap;
+  use crate::deno_dir;
   use crate::CacheReadFileError;
   use crate::Checksum;
   use crate::HttpCache;
@@ -59,6 +64,19 @@ pub mod wasm {
   }
 
   #[wasm_bindgen]
+  pub fn resolve_deno_dir(
+    maybe_custom_root: Option<String>,
+  ) -> Result<String, JsValue> {
+    console_error_panic_hook::set_once();
+    deno_dir::resolve_deno_dir(
+      &RealSys,
+      maybe_custom_root.map(wasm_string_to_path),
+    )
+    .map(|path| wasm_path_to_str(&path).into_owned())
+    .map_err(|e| JsValue::from(js_sys::Error::new(&e.to_string())))
+  }
+
+  #[wasm_bindgen]
   pub struct GlobalHttpCache {
     cache: crate::GlobalHttpCache<RealSys>,
   }
@@ -67,7 +85,7 @@ pub mod wasm {
   impl GlobalHttpCache {
     pub fn new(path: &str) -> Self {
       Self {
-        cache: crate::GlobalHttpCache::new(PathBuf::from(path), RealSys),
+        cache: crate::GlobalHttpCache::new(RealSys, PathBuf::from(path)),
       }
     }
 
@@ -102,15 +120,15 @@ pub mod wasm {
   #[wasm_bindgen]
   impl LocalHttpCache {
     pub fn new(
-      local_path: &str,
-      global_path: &str,
+      local_path: String,
+      global_path: String,
       allow_global_to_local_copy: bool,
     ) -> Self {
       console_error_panic_hook::set_once();
       let global =
-        crate::GlobalHttpCache::new(PathBuf::from(global_path), RealSys);
+        crate::GlobalHttpCache::new(RealSys, wasm_string_to_path(global_path));
       let local = crate::LocalHttpCache::new(
-        PathBuf::from(local_path),
+        wasm_string_to_path(local_path),
         Arc::new(global),
         if allow_global_to_local_copy {
           GlobalToLocalCopy::Allow

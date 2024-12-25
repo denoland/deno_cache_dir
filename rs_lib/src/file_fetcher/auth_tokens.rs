@@ -12,6 +12,7 @@ use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use log::debug;
 use log::error;
+use sys_traits::EnvVar;
 use url::Url;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,6 +118,10 @@ impl AuthDomain {
 }
 
 impl AuthTokens {
+  pub fn new_from_sys<TSys: EnvVar>(sys: &TSys) -> Self {
+    Self::new(sys.env_var("DENO_AUTH_TOKENS").ok())
+  }
+
   /// Create a new set of tokens based on the provided string. It is intended
   /// that the string be the value of an environment variable and the string is
   /// parsed for token values.  The string is expected to be a semi-colon
