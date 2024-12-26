@@ -6,9 +6,9 @@ use std::path::PathBuf;
 
 use deno_path_util::normalize_path;
 use deno_path_util::url_from_directory_path;
+use sys_traits::FsCanonicalize;
+use sys_traits::FsCreateDirAll;
 use url::Url;
-
-use crate::DenoCacheSys;
 
 pub struct NpmCacheFolderId {
   /// Package name.
@@ -31,12 +31,12 @@ pub struct NpmCacheDir {
 }
 
 impl NpmCacheDir {
-  pub fn new<Sys: DenoCacheSys>(
+  pub fn new<Sys: FsCanonicalize + FsCreateDirAll>(
     sys: &Sys,
     root_dir: PathBuf,
     known_registries_urls: Vec<Url>,
   ) -> Self {
-    fn try_get_canonicalized_root_dir<Sys: DenoCacheSys>(
+    fn try_get_canonicalized_root_dir<Sys: FsCanonicalize + FsCreateDirAll>(
       sys: &Sys,
       root_dir: &Path,
     ) -> Result<PathBuf, std::io::Error> {
@@ -258,19 +258,25 @@ fn is_banned_path_char(c: char) -> bool {
 
 #[cfg(test)]
 mod test {
-  use sys_traits::impls::RealSys;
+  use std::path::PathBuf;
+
+  use sys_traits::FsCreateDirAll;
   use url::Url;
 
   use super::NpmCacheDir;
 
   #[test]
   fn should_get_package_folder() {
-    #[allow(clippy::disallowed_methods)]
-    let root_dir = std::env::current_dir().unwrap().canonicalize().unwrap();
+    let sys = sys_traits::impls::InMemorySys::default();
+    let root_dir = if cfg!(windows) {
+      PathBuf::from("C:\\cache")
+    } else {
+      PathBuf::from("/cache")
+    };
+    sys.fs_create_dir_all(&root_dir).unwrap();
     let registry_url = Url::parse("https://registry.npmjs.org/").unwrap();
-    let env = RealSys;
     let cache =
-      NpmCacheDir::new(&env, root_dir.clone(), vec![registry_url.clone()]);
+      NpmCacheDir::new(&sys, root_dir.clone(), vec![registry_url.clone()]);
 
     assert_eq!(
       cache.package_folder_for_id("json", "1.2.5", 0, &registry_url,),

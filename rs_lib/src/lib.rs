@@ -9,7 +9,6 @@ mod global;
 mod local;
 pub mod memory;
 pub mod npm;
-mod sys;
 
 /// Permissions used to save a file in the disk caches.
 pub const CACHE_PERM: u32 = 0o644;
@@ -28,7 +27,6 @@ pub use deno_dir::resolve_deno_dir;
 pub use global::GlobalHttpCache;
 pub use local::LocalHttpCache;
 pub use local::LocalLspHttpCache;
-pub use sys::DenoCacheSys;
 
 #[cfg(feature = "wasm")]
 pub mod wasm {

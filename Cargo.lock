@@ -802,7 +802,7 @@ dependencies = [
 
 [[package]]
 name = "sys_traits"
-version = "0.1.0-alpha.4"
+version = "0.1.0-alpha.5"
 dependencies = [
  "getrandom",
  "js-sys",

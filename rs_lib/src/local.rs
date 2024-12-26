@@ -14,7 +14,16 @@ use deno_media_type::MediaType;
 use deno_path_util::atomic_write_file_with_retries;
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
+use sys_traits::FsCreateDirAll;
+use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
+use sys_traits::FsOpen;
+use sys_traits::FsRead;
+use sys_traits::FsRemoveFile;
+use sys_traits::FsRename;
+use sys_traits::SystemRandom;
+use sys_traits::SystemTimeNow;
+use sys_traits::ThreadSleep;
 use url::Url;
 
 use crate::cache::CacheEntry;
@@ -28,18 +37,46 @@ use super::common::checksum;
 use super::common::HeadersMap;
 use super::global::GlobalHttpCache;
 use super::Checksum;
-use super::DenoCacheSys;
 use super::HttpCache;
 use super::HttpCacheItemKey;
 
 /// A vendor/ folder http cache for the lsp that provides functionality
 /// for doing a reverse mapping.
 #[derive(Debug)]
-pub struct LocalLspHttpCache<Env: DenoCacheSys> {
+pub struct LocalLspHttpCache<
+  Env: FsCreateDirAll
+    + FsMetadata
+    + FsOpen
+    + FsRead
+    + FsRemoveFile
+    + FsRename
+    + ThreadSleep
+    + SystemRandom
+    + SystemTimeNow
+    + Clone
+    + std::fmt::Debug
+    + Send
+    + Sync,
+> {
   cache: LocalHttpCache<Env>,
 }
 
-impl<Env: DenoCacheSys> LocalLspHttpCache<Env> {
+impl<
+    Env: FsCreateDirAll
+      + FsMetadata
+      + FsOpen
+      + FsRead
+      + FsRemoveFile
+      + FsRename
+      + ThreadSleep
+      + SystemRandom
+      + SystemTimeNow
+      + Clone
+      + std::fmt::Debug
+      + Send
+      + Sync,
+  > LocalLspHttpCache<Env>
+{
   pub fn new(path: PathBuf, global_cache: Arc<GlobalHttpCache<Env>>) -> Self {
     #[cfg(not(feature = "wasm"))]
     assert!(path.is_absolute());
@@ -147,7 +184,22 @@ impl<Env: DenoCacheSys> LocalLspHttpCache<Env> {
   }
 }
 
-impl<Env: DenoCacheSys> HttpCache for LocalLspHttpCache<Env> {
+impl<
+    Env: FsCreateDirAll
+      + FsMetadata
+      + FsOpen
+      + FsRead
+      + FsRemoveFile
+      + FsRename
+      + ThreadSleep
+      + SystemRandom
+      + SystemTimeNow
+      + Clone
+      + std::fmt::Debug
+      + Send
+      + Sync,
+  > HttpCache for LocalLspHttpCache<Env>
+{
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
@@ -199,14 +251,43 @@ impl<Env: DenoCacheSys> HttpCache for LocalLspHttpCache<Env> {
 }
 
 #[derive(Debug)]
-pub struct LocalHttpCache<Env: DenoCacheSys> {
+pub struct LocalHttpCache<
+  Env: FsCreateDirAll
+    + FsMetadata
+    + FsOpen
+    + FsRead
+    + FsRemoveFile
+    + FsRename
+    + ThreadSleep
+    + SystemRandom
+    + SystemTimeNow
+    + Clone
+    + std::fmt::Debug
+    + Send
+    + Sync,
+> {
   path: PathBuf,
   manifest: LocalCacheManifest<Env>,
   global_cache: Arc<GlobalHttpCache<Env>>,
   allow_global_to_local: GlobalToLocalCopy,
 }
 
-impl<Env: DenoCacheSys> LocalHttpCache<Env> {
+impl<
+    Env: FsCreateDirAll
+      + FsMetadata
+      + FsOpen
+      + FsRead
+      + FsRemoveFile
+      + FsRename
+      + ThreadSleep
+      + SystemRandom
+      + SystemTimeNow
+      + Clone
+      + std::fmt::Debug
+      + Send
+      + Sync,
+  > LocalHttpCache<Env>
+{
   pub fn new(
     path: PathBuf,
     global_cache: Arc<GlobalHttpCache<Env>>,
@@ -270,7 +351,22 @@ impl<Env: DenoCacheSys> LocalHttpCache<Env> {
   }
 }
 
-impl<Env: DenoCacheSys> HttpCache for LocalHttpCache<Env> {
+impl<
+    Env: FsCreateDirAll
+      + FsMetadata
+      + FsOpen
+      + FsRead
+      + FsRemoveFile
+      + FsRename
+      + ThreadSleep
+      + SystemRandom
+      + SystemTimeNow
+      + Clone
+      + std::fmt::Debug
+      + Send
+      + Sync,
+  > HttpCache for LocalHttpCache<Env>
+{
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
@@ -619,13 +715,32 @@ fn url_to_local_sub_path<'a>(
 }
 
 #[derive(Debug)]
-struct LocalCacheManifest<Sys: DenoCacheSys> {
+struct LocalCacheManifest<
+  Sys: FsCreateDirAll
+    + FsMetadata
+    + FsOpen
+    + FsRead
+    + FsRemoveFile
+    + FsRename
+    + ThreadSleep
+    + SystemRandom,
+> {
   sys: Sys,
   file_path: PathBuf,
   data: RwLock<manifest::LocalCacheManifestData>,
 }
 
-impl<Sys: DenoCacheSys> LocalCacheManifest<Sys> {
+impl<
+    Sys: FsCreateDirAll
+      + FsMetadata
+      + FsOpen
+      + FsRead
+      + FsRemoveFile
+      + FsRename
+      + ThreadSleep
+      + SystemRandom,
+  > LocalCacheManifest<Sys>
+{
   pub fn new(file_path: PathBuf, sys: Sys) -> Self {
     Self::new_internal(file_path, false, sys)
   }

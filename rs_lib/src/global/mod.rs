@@ -6,12 +6,20 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use serde::Deserialize;
+use sys_traits::FsCreateDirAll;
+use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
+use sys_traits::FsOpen;
+use sys_traits::FsRead;
+use sys_traits::FsRemoveFile;
+use sys_traits::FsRename;
+use sys_traits::SystemRandom;
+use sys_traits::SystemTimeNow;
+use sys_traits::ThreadSleep;
 use url::Url;
 
 use super::cache::HttpCache;
 use super::cache::HttpCacheItemKey;
-use super::sys::DenoCacheSys;
 use crate::cache::url_to_filename;
 use crate::cache::CacheEntry;
 use crate::cache::CacheReadFileError;
@@ -22,14 +30,32 @@ use crate::common::HeadersMap;
 mod cache_file;
 
 #[derive(Debug)]
-pub struct GlobalHttpCache<Sys: DenoCacheSys> {
+pub struct GlobalHttpCache<
+  Sys: FsCreateDirAll
+    + FsMetadata
+    + FsOpen
+    + FsRemoveFile
+    + FsRename
+    + ThreadSleep
+    + SystemRandom
+    + Clone,
+> {
   path: PathBuf,
   pub(crate) sys: Sys,
 }
 
-impl<Sys: DenoCacheSys> GlobalHttpCache<Sys> {
+impl<
+    Sys: FsCreateDirAll
+      + FsMetadata
+      + FsOpen
+      + FsRemoveFile
+      + FsRename
+      + ThreadSleep
+      + SystemRandom
+      + Clone,
+  > GlobalHttpCache<Sys>
+{
   pub fn new(sys: Sys, path: PathBuf) -> Self {
-    #[cfg(not(feature = "wasm"))]
     assert!(path.is_absolute());
     Self { path, sys }
   }
@@ -58,7 +84,22 @@ impl<Sys: DenoCacheSys> GlobalHttpCache<Sys> {
   }
 }
 
-impl<Env: DenoCacheSys> HttpCache for GlobalHttpCache<Env> {
+impl<
+    Env: FsCreateDirAll
+      + FsMetadata
+      + FsOpen
+      + FsRead
+      + FsRemoveFile
+      + FsRename
+      + ThreadSleep
+      + SystemRandom
+      + SystemTimeNow
+      + std::fmt::Debug
+      + Send
+      + Sync
+      + Clone,
+  > HttpCache for GlobalHttpCache<Env>
+{
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
