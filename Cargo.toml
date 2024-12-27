@@ -12,6 +12,3 @@ codegen-units = 1
 incremental = true
 lto = true
 opt-level = "z"
-
-[patch.crates-io]
-deno_path_util = { git = "https://github.com/denoland/deno_path_util", branch = "refactor_use_sys_traits" }

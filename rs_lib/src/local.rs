@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use deno_media_type::MediaType;
-use deno_path_util::atomic_write_file_with_retries;
+use deno_path_util::fs::atomic_write_file_with_retries;
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use sys_traits::FsCreateDirAll;

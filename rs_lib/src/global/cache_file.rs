@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::io::ErrorKind;
 use std::path::Path;
 
-use deno_path_util::atomic_write_file_with_retries;
+use deno_path_util::fs::atomic_write_file_with_retries;
 use serde::de::DeserializeOwned;
 use sys_traits::FsCreateDirAll;
 use sys_traits::FsMetadata;
