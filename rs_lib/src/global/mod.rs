@@ -86,7 +86,7 @@ impl<
 }
 
 impl<
-    Env: FsCreateDirAll
+    TSys: FsCreateDirAll
       + FsMetadata
       + FsOpen
       + FsRead
@@ -99,7 +99,7 @@ impl<
       + Send
       + Sync
       + Clone,
-  > HttpCache for GlobalHttpCache<Env>
+  > HttpCache for GlobalHttpCache<TSys>
 {
   fn cache_item_key<'a>(
     &self,

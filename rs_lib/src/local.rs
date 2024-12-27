@@ -44,7 +44,7 @@ use super::HttpCacheItemKey;
 /// for doing a reverse mapping.
 #[derive(Debug)]
 pub struct LocalLspHttpCache<
-  Env: FsCreateDirAll
+  TSys: FsCreateDirAll
     + FsMetadata
     + FsOpen
     + FsRead
@@ -58,11 +58,11 @@ pub struct LocalLspHttpCache<
     + Send
     + Sync,
 > {
-  cache: LocalHttpCache<Env>,
+  cache: LocalHttpCache<TSys>,
 }
 
 impl<
-    Env: FsCreateDirAll
+    TSys: FsCreateDirAll
       + FsMetadata
       + FsOpen
       + FsRead
@@ -75,9 +75,9 @@ impl<
       + std::fmt::Debug
       + Send
       + Sync,
-  > LocalLspHttpCache<Env>
+  > LocalLspHttpCache<TSys>
 {
-  pub fn new(path: PathBuf, global_cache: Arc<GlobalHttpCache<Env>>) -> Self {
+  pub fn new(path: PathBuf, global_cache: Arc<GlobalHttpCache<TSys>>) -> Self {
     #[cfg(not(feature = "wasm"))]
     assert!(path.is_absolute());
     let manifest = LocalCacheManifest::new_for_lsp(
@@ -185,7 +185,7 @@ impl<
 }
 
 impl<
-    Env: FsCreateDirAll
+    TSys: FsCreateDirAll
       + FsMetadata
       + FsOpen
       + FsRead
@@ -198,7 +198,7 @@ impl<
       + std::fmt::Debug
       + Send
       + Sync,
-  > HttpCache for LocalLspHttpCache<Env>
+  > HttpCache for LocalLspHttpCache<TSys>
 {
   fn cache_item_key<'a>(
     &self,
@@ -252,7 +252,7 @@ impl<
 
 #[derive(Debug)]
 pub struct LocalHttpCache<
-  Env: FsCreateDirAll
+  TSys: FsCreateDirAll
     + FsMetadata
     + FsOpen
     + FsRead
@@ -267,13 +267,13 @@ pub struct LocalHttpCache<
     + Sync,
 > {
   path: PathBuf,
-  manifest: LocalCacheManifest<Env>,
-  global_cache: Arc<GlobalHttpCache<Env>>,
+  manifest: LocalCacheManifest<TSys>,
+  global_cache: Arc<GlobalHttpCache<TSys>>,
   allow_global_to_local: GlobalToLocalCopy,
 }
 
 impl<
-    Env: FsCreateDirAll
+    TSys: FsCreateDirAll
       + FsMetadata
       + FsOpen
       + FsRead
@@ -286,11 +286,11 @@ impl<
       + std::fmt::Debug
       + Send
       + Sync,
-  > LocalHttpCache<Env>
+  > LocalHttpCache<TSys>
 {
   pub fn new(
     path: PathBuf,
-    global_cache: Arc<GlobalHttpCache<Env>>,
+    global_cache: Arc<GlobalHttpCache<TSys>>,
     allow_global_to_local: GlobalToLocalCopy,
   ) -> Self {
     #[cfg(not(feature = "wasm"))]
@@ -308,7 +308,7 @@ impl<
   }
 
   #[inline]
-  fn env(&self) -> &Env {
+  fn env(&self) -> &TSys {
     &self.global_cache.sys
   }
 
@@ -352,7 +352,7 @@ impl<
 }
 
 impl<
-    Env: FsCreateDirAll
+    TSys: FsCreateDirAll
       + FsMetadata
       + FsOpen
       + FsRead
@@ -365,7 +365,7 @@ impl<
       + std::fmt::Debug
       + Send
       + Sync,
-  > HttpCache for LocalHttpCache<Env>
+  > HttpCache for LocalHttpCache<TSys>
 {
   fn cache_item_key<'a>(
     &self,
