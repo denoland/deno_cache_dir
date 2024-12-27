@@ -4,7 +4,7 @@ import { isAbsolute, join, resolve } from "@std/path";
 import { DiskCache } from "./disk_cache.ts";
 import { HttpCache } from "./http_cache.ts";
 import { assert } from "./util.ts";
-import { instantiate } from "./lib/deno_cache_dir.generated.js"
+import { instantiate } from "./lib/deno_cache_dir.generated.js";
 
 export class DenoDir {
   readonly root: string;
