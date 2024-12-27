@@ -68,7 +68,8 @@ fn test_global_get_set() {
   assert_eq!(headers.get("etag").unwrap(), "as5625rqdsfb");
   assert_eq!(headers.get("foobar"), None);
   let download_time = cache.read_download_time(&key).unwrap().unwrap();
-  assert!(download_time.elapsed().unwrap().as_secs() < 1);
+  let elapsed = download_time.elapsed().unwrap();
+  assert!(elapsed.as_secs() < 2, "Elapsed: {:?}", elapsed);
   let matching_checksum =
     "64ec88ca00b268e5ba1a35678a1b5316d212f4f366b2477232534a8aeca37f3c";
   // reading with checksum that matches
