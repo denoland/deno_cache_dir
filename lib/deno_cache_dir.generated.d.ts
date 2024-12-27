@@ -5,6 +5,7 @@ export interface InstantiateResult {
   instance: WebAssembly.Instance;
   exports: {
     url_to_filename: typeof url_to_filename;
+    resolve_deno_dir: typeof resolve_deno_dir;
     GlobalHttpCache : typeof GlobalHttpCache ;
     LocalHttpCache : typeof LocalHttpCache 
   };
@@ -29,6 +30,11 @@ export function instantiateWithInstance(): InstantiateResult;
 * @returns {string}
 */
 export function url_to_filename(url: string): string;
+/**
+* @param {string | undefined} [maybe_custom_root]
+* @returns {string}
+*/
+export function resolve_deno_dir(maybe_custom_root?: string): string;
 /**
 */
 export class GlobalHttpCache {

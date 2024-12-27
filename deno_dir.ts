@@ -1,10 +1,10 @@
 // Copyright 2018-2024 the Deno authors. MIT license.
 
-import { isAbsolute, join, normalize, resolve } from "@std/path";
+import { isAbsolute, join, resolve } from "@std/path";
 import { DiskCache } from "./disk_cache.ts";
-import { cacheDir, homeDir } from "./dirs.ts";
 import { HttpCache } from "./http_cache.ts";
 import { assert } from "./util.ts";
+import { instantiate } from "./lib/deno_cache_dir.generated.js";
 
 export class DenoDir {
   readonly root: string;
@@ -40,29 +40,11 @@ export class DenoDir {
     root: string | URL | undefined,
   ): string | undefined {
     if (root) {
-      root = resolvePathOrUrl(root);
+      return resolvePathOrUrl(root);
     } else {
-      Deno.permissions.request({ name: "env", variable: "DENO_DIR" });
-      const dd = Deno.env.get("DENO_DIR");
-      if (dd) {
-        if (!isAbsolute(dd)) {
-          root = normalize(join(Deno.cwd(), dd));
-        } else {
-          root = dd;
-        }
-      } else {
-        const cd = cacheDir();
-        if (cd) {
-          root = join(cd, "deno");
-        } else {
-          const hd = homeDir();
-          if (hd) {
-            root = join(hd, ".deno");
-          }
-        }
-      }
+      const instance = instantiate();
+      return instance.resolve_deno_dir();
     }
-    return root;
   }
 }
 

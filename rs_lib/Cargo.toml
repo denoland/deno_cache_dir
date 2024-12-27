@@ -12,7 +12,7 @@ crate-type = ["cdylib", "lib"]
 [features]
 default = ["file_fetcher"]
 file_fetcher = ["async-trait", "base64", "cache_control", "chrono", "data-url", "http"]
-wasm = ["console_error_panic_hook", "js-sys", "serde-wasm-bindgen", "wasm-bindgen"]
+wasm = ["console_error_panic_hook", "js-sys", "serde-wasm-bindgen", "wasm-bindgen", "sys_traits/wasm"]
 
 [dependencies]
 async-trait = { version = "0.1.73", optional = true }
@@ -25,7 +25,8 @@ chrono = { version = "0.4", default-features = false, features = ["std"], option
 data-url = { version = "0.3.0", optional = true }
 deno_error = { version = "0.5.2", features =["url"] }
 deno_media_type = "0.2.2"
-deno_path_util = "0.2.2"
+deno_path_util = "0.3.0"
+sys_traits.workspace = true
 http = { version = "1", optional = true }
 indexmap = { version = "2.0.0", features = ["serde"] }
 log = "0.4.19"
@@ -44,5 +45,6 @@ serde-wasm-bindgen = { version = "0.6.5", optional = true }
 
 [dev-dependencies]
 pretty_assertions = "1.4.0"
+sys_traits = { workspace = true, features = ["memory", "real", "getrandom", "libc", "winapi"] }
 tempfile = "3.7.1"
 tokio = { version = "1", features = ["rt", "macros"] }

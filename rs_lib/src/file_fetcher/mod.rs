@@ -15,9 +15,10 @@ use http::header::ACCEPT;
 use http::header::AUTHORIZATION;
 use http::header::IF_NONE_MATCH;
 use http::header::LOCATION;
-use http::HeaderMap;
 use http::HeaderValue;
 use log::debug;
+use sys_traits::FsRead;
+use sys_traits::SystemTimeNow;
 use thiserror::Error;
 use url::Url;
 
@@ -27,7 +28,6 @@ use crate::CacheEntry;
 use crate::CacheReadFileError;
 use crate::Checksum;
 use crate::ChecksumIntegrityError;
-use crate::DenoCacheEnv;
 use crate::HttpCache;
 
 mod auth_tokens;
@@ -37,6 +37,7 @@ pub use auth_tokens::AuthDomain;
 pub use auth_tokens::AuthToken;
 pub use auth_tokens::AuthTokenData;
 pub use auth_tokens::AuthTokens;
+pub use http::HeaderMap;
 
 /// Indicates how cached source files should be handled.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -402,6 +403,16 @@ pub struct BlobData {
   pub bytes: Vec<u8>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct NullBlobStore;
+
+#[async_trait::async_trait(?Send)]
+impl BlobStore for NullBlobStore {
+  async fn get(&self, _url: &Url) -> std::io::Result<Option<BlobData>> {
+    Ok(None)
+  }
+}
+
 #[async_trait::async_trait(?Send)]
 pub trait BlobStore: std::fmt::Debug + Send + Sync {
   async fn get(&self, url: &Url) -> std::io::Result<Option<BlobData>>;
@@ -426,11 +437,11 @@ pub struct FileFetcherOptions {
 #[derive(Debug)]
 pub struct FileFetcher<
   TBlobStore: BlobStore,
-  TEnv: DenoCacheEnv,
+  TSys: FsRead + SystemTimeNow,
   THttpClient: HttpClient,
 > {
   blob_store: TBlobStore,
-  env: TEnv,
+  sys: TSys,
   http_cache: Arc<dyn HttpCache>,
   http_client: THttpClient,
   memory_files: Arc<dyn MemoryFiles>,
@@ -439,12 +450,15 @@ pub struct FileFetcher<
   auth_tokens: AuthTokens,
 }
 
-impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
-  FileFetcher<TBlobStore, TEnv, THttpClient>
+impl<
+    TBlobStore: BlobStore,
+    TSys: FsRead + SystemTimeNow,
+    THttpClient: HttpClient,
+  > FileFetcher<TBlobStore, TSys, THttpClient>
 {
   pub fn new(
     blob_store: TBlobStore,
-    env: TEnv,
+    sys: TSys,
     http_cache: Arc<dyn HttpCache>,
     http_client: THttpClient,
     memory_files: Arc<dyn MemoryFiles>,
@@ -452,7 +466,7 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
   ) -> Self {
     Self {
       blob_store,
-      env,
+      sys,
       http_cache,
       http_client,
       memory_files,
@@ -745,7 +759,7 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
           return false;
         };
         let cache_semantics =
-          CacheSemantics::new(headers, download_time, self.env.time_now());
+          CacheSemantics::new(headers, download_time, self.sys.sys_time_now());
         cache_semantics.should_use()
       }
       CacheSetting::ReloadSome(list) => {
@@ -864,7 +878,7 @@ impl<TBlobStore: BlobStore, TEnv: DenoCacheEnv, THttpClient: HttpClient>
     } else {
       None
     };
-    let bytes = match self.env.read_file_bytes(&local) {
+    let bytes = match self.sys.fs_read(&local) {
       Ok(bytes) => bytes,
       Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
         return Ok(None);
