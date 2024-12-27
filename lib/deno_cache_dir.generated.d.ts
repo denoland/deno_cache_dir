@@ -32,9 +32,9 @@ export function instantiateWithInstance(): InstantiateResult;
 export function url_to_filename(url: string): string;
 /**
 * @param {string | undefined} [maybe_custom_root]
-* @returns {string | undefined}
+* @returns {string}
 */
-export function resolve_deno_dir(maybe_custom_root?: string): string | undefined;
+export function resolve_deno_dir(maybe_custom_root?: string): string;
 /**
 */
 export class GlobalHttpCache {
