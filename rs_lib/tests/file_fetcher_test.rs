@@ -1,8 +1,8 @@
-// Copyright 2018-2024 the Deno authors. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(clippy::disallowed_methods)]
 
-use std::sync::Arc;
+use std::rc::Rc;
 
 use deno_cache_dir::file_fetcher::AuthTokens;
 use deno_cache_dir::file_fetcher::CacheSetting;
@@ -58,9 +58,9 @@ fn create_file_fetcher<TClient: HttpClient>(
   FileFetcher::new(
     NullBlobStore,
     InMemorySys::default(),
-    Arc::new(MemoryHttpCache::default()),
+    Rc::new(MemoryHttpCache::default()),
     client,
-    Arc::new(NullMemoryFiles),
+    Rc::new(NullMemoryFiles),
     FileFetcherOptions {
       allow_remote: true,
       cache_setting: CacheSetting::Use,

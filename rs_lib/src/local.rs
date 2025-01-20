@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -7,7 +7,6 @@ use std::collections::HashSet;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::SystemTime;
 
 use deno_media_type::MediaType;
@@ -29,13 +28,15 @@ use url::Url;
 use crate::cache::CacheEntry;
 use crate::cache::CacheReadFileError;
 use crate::cache::GlobalToLocalCopy;
+use crate::global::GlobalHttpCacheRc;
+use crate::sync::MaybeSend;
+use crate::sync::MaybeSync;
 use crate::SerializedCachedUrlMetadata;
 use crate::CACHE_PERM;
 
 use super::common::base_url_to_filename_parts;
 use super::common::checksum;
 use super::common::HeadersMap;
-use super::global::GlobalHttpCache;
 use super::Checksum;
 use super::HttpCache;
 use super::HttpCacheItemKey;
@@ -53,10 +54,10 @@ pub struct LocalLspHttpCache<
     + ThreadSleep
     + SystemRandom
     + SystemTimeNow
-    + Clone
+    + MaybeSend
+    + MaybeSync
     + std::fmt::Debug
-    + Send
-    + Sync,
+    + Clone,
 > {
   cache: LocalHttpCache<TSys>,
 }
@@ -71,13 +72,13 @@ impl<
       + ThreadSleep
       + SystemRandom
       + SystemTimeNow
-      + Clone
+      + MaybeSend
+      + MaybeSync
       + std::fmt::Debug
-      + Send
-      + Sync,
+      + Clone,
   > LocalLspHttpCache<TSys>
 {
-  pub fn new(path: PathBuf, global_cache: Arc<GlobalHttpCache<TSys>>) -> Self {
+  pub fn new(path: PathBuf, global_cache: GlobalHttpCacheRc<TSys>) -> Self {
     #[cfg(not(feature = "wasm"))]
     assert!(path.is_absolute());
     let manifest = LocalCacheManifest::new_for_lsp(
@@ -194,10 +195,10 @@ impl<
       + ThreadSleep
       + SystemRandom
       + SystemTimeNow
-      + Clone
+      + MaybeSend
+      + MaybeSync
       + std::fmt::Debug
-      + Send
-      + Sync,
+      + Clone,
   > HttpCache for LocalLspHttpCache<TSys>
 {
   fn cache_item_key<'a>(
@@ -250,6 +251,9 @@ impl<
   }
 }
 
+#[allow(clippy::disallowed_types)]
+pub type LocalHttpCacheRc<TSys> = crate::sync::MaybeArc<LocalHttpCache<TSys>>;
+
 #[derive(Debug)]
 pub struct LocalHttpCache<
   TSys: FsCreateDirAll
@@ -261,14 +265,14 @@ pub struct LocalHttpCache<
     + ThreadSleep
     + SystemRandom
     + SystemTimeNow
-    + Clone
+    + MaybeSend
+    + MaybeSync
     + std::fmt::Debug
-    + Send
-    + Sync,
+    + Clone,
 > {
   path: PathBuf,
   manifest: LocalCacheManifest<TSys>,
-  global_cache: Arc<GlobalHttpCache<TSys>>,
+  global_cache: GlobalHttpCacheRc<TSys>,
   allow_global_to_local: GlobalToLocalCopy,
 }
 
@@ -282,15 +286,15 @@ impl<
       + ThreadSleep
       + SystemRandom
       + SystemTimeNow
-      + Clone
+      + MaybeSend
+      + MaybeSync
       + std::fmt::Debug
-      + Send
-      + Sync,
+      + Clone,
   > LocalHttpCache<TSys>
 {
   pub fn new(
     path: PathBuf,
-    global_cache: Arc<GlobalHttpCache<TSys>>,
+    global_cache: GlobalHttpCacheRc<TSys>,
     allow_global_to_local: GlobalToLocalCopy,
   ) -> Self {
     #[cfg(not(feature = "wasm"))]
@@ -322,7 +326,7 @@ impl<
     let local_path = url_to_local_sub_path(url, None)?;
     if self
       .env()
-      .fs_is_file_no_err(&local_path.as_path_from_root(&self.path))
+      .fs_is_file_no_err(local_path.as_path_from_root(&self.path))
     {
       return Ok(Some(Default::default()));
     }
@@ -361,10 +365,10 @@ impl<
       + ThreadSleep
       + SystemRandom
       + SystemTimeNow
-      + Clone
+      + MaybeSend
+      + MaybeSync
       + std::fmt::Debug
-      + Send
-      + Sync,
+      + Clone,
   > HttpCache for LocalHttpCache<TSys>
 {
   fn cache_item_key<'a>(
@@ -399,7 +403,7 @@ impl<
         url_to_local_sub_path(key.url, headers_content_type(&headers))?;
       if let Ok(metadata) = self
         .env()
-        .fs_metadata(&local_path.as_path_from_root(&self.path))
+        .fs_metadata(local_path.as_path_from_root(&self.path))
       {
         if let Ok(modified_time) = metadata.modified() {
           return Ok(Some(modified_time));
@@ -723,7 +727,10 @@ struct LocalCacheManifest<
     + FsRemoveFile
     + FsRename
     + ThreadSleep
-    + SystemRandom,
+    + SystemRandom
+    + MaybeSend
+    + MaybeSync
+    + std::fmt::Debug,
 > {
   sys: Sys,
   file_path: PathBuf,
@@ -738,7 +745,11 @@ impl<
       + FsRemoveFile
       + FsRename
       + ThreadSleep
-      + SystemRandom,
+      + SystemRandom
+      + MaybeSend
+      + MaybeSync
+      + std::fmt::Debug
+      + Clone,
   > LocalCacheManifest<Sys>
 {
   pub fn new(file_path: PathBuf, sys: Sys) -> Self {

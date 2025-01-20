@@ -1,9 +1,10 @@
-// Copyright 2018-2024 the Deno authors. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(clippy::disallowed_methods)]
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_cache_dir::CacheReadFileError;
@@ -105,7 +106,7 @@ fn test_local_global_cache() {
   let local_cache_path = temp_dir.path().join("local");
   let sys = RealSys;
   let global_cache =
-    Arc::new(GlobalHttpCache::new(sys, global_cache_path.clone()));
+    Rc::new(GlobalHttpCache::new(sys, global_cache_path.clone()));
   let local_cache = LocalHttpCache::new(
     local_cache_path.clone(),
     global_cache.clone(),
@@ -525,7 +526,7 @@ fn test_lsp_local_cache() {
   let local_cache_path = temp_dir.path().join("local");
   let sys = RealSys;
   let global_cache =
-    Arc::new(GlobalHttpCache::new(sys, global_cache_path.to_path_buf()));
+    Rc::new(GlobalHttpCache::new(sys, global_cache_path.to_path_buf()));
   let local_cache = LocalHttpCache::new(
     local_cache_path.to_path_buf(),
     global_cache.clone(),

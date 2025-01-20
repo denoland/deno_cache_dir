@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_error::JsError;
 use serde::Deserialize;
@@ -13,6 +13,8 @@ use url::Url;
 use crate::common::base_url_to_filename_parts;
 use crate::common::checksum;
 use crate::common::HeadersMap;
+use crate::sync::MaybeSend;
+use crate::sync::MaybeSync;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum GlobalToLocalCopy {
@@ -153,7 +155,10 @@ pub struct HttpCacheItemKey<'a> {
   pub(super) file_path: Option<PathBuf>,
 }
 
-pub trait HttpCache: Send + Sync + std::fmt::Debug {
+#[allow(clippy::disallowed_types)]
+pub type HttpCacheRc = crate::sync::MaybeArc<dyn HttpCache>;
+
+pub trait HttpCache: MaybeSend + MaybeSync + std::fmt::Debug {
   /// A pre-computed key for looking up items in the cache.
   fn cache_item_key<'a>(
     &self,

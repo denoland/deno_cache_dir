@@ -44,3 +44,6 @@ disallowed-methods = [
   { path = "std::path::Path::exists", reason = "File system operations should be done using DenoCacheEnv trait" },
   { path = "std::time::SystemTime::now", reason = "Getting the time should be done using DenoCacheEnv trait" },
 ]
+disallowed-types = [
+  { path = "std::sync::Arc", reason = "use crate::sync::MaybeArc instead" },
+]

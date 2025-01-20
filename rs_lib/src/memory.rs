@@ -1,14 +1,15 @@
-// Copyright 2018-2024 the Deno authors. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use parking_lot::Mutex;
+use sys_traits::SystemTimeNow;
 use url::Url;
 
+use crate::sync::MaybeSend;
+use crate::sync::MaybeSync;
 use crate::CacheEntry;
 use crate::CacheReadFileError;
 use crate::Checksum;
@@ -17,35 +18,36 @@ use crate::HttpCache;
 use crate::HttpCacheItemKey;
 use crate::SerializedCachedUrlMetadata;
 
-pub trait MemoryHttpCacheClock: std::fmt::Debug + Send + Sync {
-  fn time_now(&self) -> SystemTime;
-}
-
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug)]
 pub struct MemoryHttpCacheSystemTimeClock;
 
-impl MemoryHttpCacheClock for MemoryHttpCacheSystemTimeClock {
-  fn time_now(&self) -> SystemTime {
+#[cfg(not(target_arch = "wasm32"))]
+impl sys_traits::SystemTimeNow for MemoryHttpCacheSystemTimeClock {
+  fn sys_time_now(&self) -> std::time::SystemTime {
     #[allow(clippy::disallowed_methods)]
-    SystemTime::now()
+    std::time::SystemTime::now()
   }
 }
 
 /// A simple in-memory cache mostly useful for testing.
 #[derive(Debug)]
-pub struct MemoryHttpCache {
+pub struct MemoryHttpCache<TSys: SystemTimeNow + MaybeSend + MaybeSync> {
   cache: Mutex<HashMap<Url, CacheEntry>>,
-  clock: Arc<dyn MemoryHttpCacheClock>,
+  clock: TSys,
 }
 
-impl Default for MemoryHttpCache {
+#[cfg(not(target_arch = "wasm32"))]
+impl Default for MemoryHttpCache<MemoryHttpCacheSystemTimeClock> {
   fn default() -> Self {
-    Self::new(Arc::new(MemoryHttpCacheSystemTimeClock))
+    Self::new(MemoryHttpCacheSystemTimeClock)
   }
 }
 
-impl MemoryHttpCache {
-  pub fn new(clock: Arc<dyn MemoryHttpCacheClock>) -> Self {
+impl<TSys: SystemTimeNow + std::fmt::Debug + MaybeSend + MaybeSync>
+  MemoryHttpCache<TSys>
+{
+  pub fn new(clock: TSys) -> Self {
     Self {
       cache: Mutex::new(HashMap::new()),
       clock,
@@ -53,7 +55,9 @@ impl MemoryHttpCache {
   }
 }
 
-impl HttpCache for MemoryHttpCache {
+impl<TSys: SystemTimeNow + std::fmt::Debug + MaybeSend + MaybeSync> HttpCache
+  for MemoryHttpCache<TSys>
+{
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
@@ -85,7 +89,7 @@ impl HttpCache for MemoryHttpCache {
           time: Some(
             self
               .clock
-              .time_now()
+              .sys_time_now()
               .duration_since(UNIX_EPOCH)
               .unwrap()
               .as_secs(),

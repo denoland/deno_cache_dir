@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { DenoDir } from "./deno_dir.ts";
 import { assertRejects, createGraph } from "./deps_test.ts";

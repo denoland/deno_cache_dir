@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -26,8 +26,13 @@ use crate::cache::CacheReadFileError;
 use crate::cache::Checksum;
 use crate::cache::SerializedCachedUrlMetadata;
 use crate::common::HeadersMap;
+use crate::sync::MaybeSend;
+use crate::sync::MaybeSync;
 
 mod cache_file;
+
+#[allow(clippy::disallowed_types)]
+pub type GlobalHttpCacheRc<TSys> = crate::sync::MaybeArc<GlobalHttpCache<TSys>>;
 
 #[derive(Debug)]
 pub struct GlobalHttpCache<
@@ -96,8 +101,8 @@ impl<
       + SystemRandom
       + SystemTimeNow
       + std::fmt::Debug
-      + Send
-      + Sync
+      + MaybeSend
+      + MaybeSync
       + Clone,
   > HttpCache for GlobalHttpCache<TSys>
 {
