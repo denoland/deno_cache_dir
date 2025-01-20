@@ -5,7 +5,6 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
-use std::sync::Arc;
 
 use deno_cache_dir::CacheReadFileError;
 use deno_cache_dir::Checksum;
@@ -34,11 +33,11 @@ fn test_global_create_cache() {
   // https://github.com/denoland/deno/issues/5688
   let sys = RealSys;
   let cache = GlobalHttpCache::new(sys, cache_path.clone());
-  assert!(!cache.get_global_cache_location().exists());
+  assert!(!cache.dir_path().exists());
   let url = Url::parse("http://example.com/foo/bar.js").unwrap();
   cache.set(&url, Default::default(), b"hello world").unwrap();
   assert!(cache_path.is_dir());
-  assert!(cache.get_global_cache_filepath(&url).unwrap().is_file());
+  assert!(cache.local_path_for_url(&url).unwrap().is_file());
 }
 
 #[test]
