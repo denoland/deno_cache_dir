@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -26,8 +26,13 @@ use crate::cache::CacheReadFileError;
 use crate::cache::Checksum;
 use crate::cache::SerializedCachedUrlMetadata;
 use crate::common::HeadersMap;
+use crate::sync::MaybeSend;
+use crate::sync::MaybeSync;
 
 mod cache_file;
+
+#[allow(clippy::disallowed_types)]
+pub type GlobalHttpCacheRc<TSys> = crate::sync::MaybeArc<GlobalHttpCache<TSys>>;
 
 #[derive(Debug)]
 pub struct GlobalHttpCache<
@@ -61,18 +66,11 @@ impl<
     Self { path, sys }
   }
 
-  pub fn get_global_cache_location(&self) -> &PathBuf {
+  pub fn dir_path(&self) -> &PathBuf {
     &self.path
   }
 
-  pub fn get_global_cache_filepath(
-    &self,
-    url: &Url,
-  ) -> std::io::Result<PathBuf> {
-    Ok(self.path.join(url_to_filename(url)?))
-  }
-
-  fn get_cache_filepath(&self, url: &Url) -> std::io::Result<PathBuf> {
+  pub fn local_path_for_url(&self, url: &Url) -> std::io::Result<PathBuf> {
     Ok(self.path.join(url_to_filename(url)?))
   }
 
@@ -96,8 +94,8 @@ impl<
       + SystemRandom
       + SystemTimeNow
       + std::fmt::Debug
-      + Send
-      + Sync
+      + MaybeSend
+      + MaybeSync
       + Clone,
   > HttpCache for GlobalHttpCache<TSys>
 {
@@ -109,12 +107,12 @@ impl<
       #[cfg(debug_assertions)]
       is_local_key: false,
       url,
-      file_path: Some(self.get_cache_filepath(url)?),
+      file_path: Some(self.local_path_for_url(url)?),
     })
   }
 
   fn contains(&self, url: &Url) -> bool {
-    let Ok(cache_filepath) = self.get_cache_filepath(url) else {
+    let Ok(cache_filepath) = self.local_path_for_url(url) else {
       return false;
     };
     self.sys.fs_is_file(&cache_filepath).unwrap_or(false)
@@ -143,7 +141,7 @@ impl<
     headers: HeadersMap,
     content: &[u8],
   ) -> std::io::Result<()> {
-    let cache_filepath = self.get_cache_filepath(url)?;
+    let cache_filepath = self.local_path_for_url(url)?;
     cache_file::write(
       &self.sys,
       &cache_filepath,

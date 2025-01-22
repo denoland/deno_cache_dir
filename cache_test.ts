@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { FetchCacher } from "./cache.ts";
 import { DenoDir } from "./deno_dir.ts";

@@ -13,6 +13,7 @@ crate-type = ["cdylib", "lib"]
 default = ["file_fetcher"]
 file_fetcher = ["async-trait", "base64", "cache_control", "chrono", "data-url", "http"]
 wasm = ["console_error_panic_hook", "js-sys", "serde-wasm-bindgen", "wasm-bindgen", "sys_traits/wasm"]
+sync = []
 
 [dependencies]
 async-trait = { version = "0.1.73", optional = true }

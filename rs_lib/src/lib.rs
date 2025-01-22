@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 mod cache;
 mod common;
@@ -9,6 +9,7 @@ mod global;
 mod local;
 pub mod memory;
 pub mod npm;
+mod sync;
 
 /// Permissions used to save a file in the disk caches.
 pub const CACHE_PERM: u32 = 0o644;
@@ -21,12 +22,15 @@ pub use cache::ChecksumIntegrityError;
 pub use cache::GlobalToLocalCopy;
 pub use cache::HttpCache;
 pub use cache::HttpCacheItemKey;
+pub use cache::HttpCacheRc;
 pub use cache::SerializedCachedUrlMetadata;
 pub use common::HeadersMap;
 pub use deno_dir::resolve_deno_dir;
 pub use deno_dir::DenoDirResolutionError;
 pub use global::GlobalHttpCache;
+pub use global::GlobalHttpCacheRc;
 pub use local::LocalHttpCache;
+pub use local::LocalHttpCacheRc;
 pub use local::LocalLspHttpCache;
 
 #[cfg(feature = "wasm")]
@@ -34,7 +38,6 @@ pub mod wasm {
   use std::collections::HashMap;
   use std::io::ErrorKind;
   use std::path::PathBuf;
-  use std::sync::Arc;
 
   use js_sys::Object;
   use js_sys::Reflect;
@@ -49,6 +52,7 @@ pub mod wasm {
   use crate::cache::GlobalToLocalCopy;
   use crate::common::HeadersMap;
   use crate::deno_dir;
+  use crate::sync::new_rc;
   use crate::CacheReadFileError;
   use crate::Checksum;
   use crate::HttpCache;
@@ -128,7 +132,7 @@ pub mod wasm {
         crate::GlobalHttpCache::new(RealSys, wasm_string_to_path(global_path));
       let local = crate::LocalHttpCache::new(
         wasm_string_to_path(local_path),
-        Arc::new(global),
+        new_rc(global),
         if allow_global_to_local_copy {
           GlobalToLocalCopy::Allow
         } else {

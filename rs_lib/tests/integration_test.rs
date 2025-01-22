@@ -1,10 +1,10 @@
-// Copyright 2018-2024 the Deno authors. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(clippy::disallowed_methods)]
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use deno_cache_dir::CacheReadFileError;
 use deno_cache_dir::Checksum;
@@ -33,11 +33,11 @@ fn test_global_create_cache() {
   // https://github.com/denoland/deno/issues/5688
   let sys = RealSys;
   let cache = GlobalHttpCache::new(sys, cache_path.clone());
-  assert!(!cache.get_global_cache_location().exists());
+  assert!(!cache.dir_path().exists());
   let url = Url::parse("http://example.com/foo/bar.js").unwrap();
   cache.set(&url, Default::default(), b"hello world").unwrap();
   assert!(cache_path.is_dir());
-  assert!(cache.get_global_cache_filepath(&url).unwrap().is_file());
+  assert!(cache.local_path_for_url(&url).unwrap().is_file());
 }
 
 #[test]
@@ -105,7 +105,7 @@ fn test_local_global_cache() {
   let local_cache_path = temp_dir.path().join("local");
   let sys = RealSys;
   let global_cache =
-    Arc::new(GlobalHttpCache::new(sys, global_cache_path.clone()));
+    Rc::new(GlobalHttpCache::new(sys, global_cache_path.clone()));
   let local_cache = LocalHttpCache::new(
     local_cache_path.clone(),
     global_cache.clone(),
@@ -525,7 +525,7 @@ fn test_lsp_local_cache() {
   let local_cache_path = temp_dir.path().join("local");
   let sys = RealSys;
   let global_cache =
-    Arc::new(GlobalHttpCache::new(sys, global_cache_path.to_path_buf()));
+    Rc::new(GlobalHttpCache::new(sys, global_cache_path.to_path_buf()));
   let local_cache = LocalHttpCache::new(
     local_cache_path.to_path_buf(),
     global_cache.clone(),

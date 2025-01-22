@@ -1,9 +1,8 @@
-// Copyright 2018-2024 the Deno authors. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use boxed_error::Boxed;
 use data_url::DataUrl;
@@ -23,12 +22,14 @@ use thiserror::Error;
 use url::Url;
 
 use self::http_util::CacheSemantics;
+use crate::cache::HttpCacheRc;
 use crate::common::HeadersMap;
+use crate::sync::MaybeSend;
+use crate::sync::MaybeSync;
 use crate::CacheEntry;
 use crate::CacheReadFileError;
 use crate::Checksum;
 use crate::ChecksumIntegrityError;
-use crate::HttpCache;
 
 mod auth_tokens;
 mod http_util;
@@ -86,11 +87,15 @@ impl FileOrRedirect {
       Ok(FileOrRedirect::File(File {
         url: url.clone(),
         maybe_headers: Some(cache_entry.metadata.headers),
-        source: Arc::from(cache_entry.content),
+        #[allow(clippy::disallowed_types)] // ok for source
+        source: std::sync::Arc::from(cache_entry.content),
       }))
     }
   }
 }
+
+#[allow(clippy::disallowed_types)] // ok for source
+type FileSource = std::sync::Arc<[u8]>;
 
 /// A structure representing a source file.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -100,7 +105,7 @@ pub struct File {
   pub url: Url,
   pub maybe_headers: Option<HashMap<String, String>>,
   /// The source of the file.
-  pub source: Arc<[u8]>,
+  pub source: FileSource,
 }
 
 impl File {
@@ -116,7 +121,10 @@ impl File {
   }
 }
 
-pub trait MemoryFiles: std::fmt::Debug + Send + Sync {
+#[allow(clippy::disallowed_types)]
+pub type MemoryFilesRc = crate::sync::MaybeArc<dyn MemoryFiles>;
+
+pub trait MemoryFiles: std::fmt::Debug + MaybeSend + MaybeSync {
   fn get(&self, url: &Url) -> Option<File>;
 }
 
@@ -383,7 +391,7 @@ impl From<FetchCachedNoFollowError> for FetchNoFollowError {
 }
 
 #[async_trait::async_trait(?Send)]
-pub trait HttpClient: std::fmt::Debug + Send + Sync {
+pub trait HttpClient: std::fmt::Debug + MaybeSend + MaybeSync {
   /// Send a request getting the response.
   ///
   /// The implementation MUST not follow redirects. Return `SendResponse::Redirect`
@@ -414,7 +422,7 @@ impl BlobStore for NullBlobStore {
 }
 
 #[async_trait::async_trait(?Send)]
-pub trait BlobStore: std::fmt::Debug + Send + Sync {
+pub trait BlobStore: std::fmt::Debug + MaybeSend + MaybeSync {
   async fn get(&self, url: &Url) -> std::io::Result<Option<BlobData>>;
 }
 
@@ -442,9 +450,9 @@ pub struct FileFetcher<
 > {
   blob_store: TBlobStore,
   sys: TSys,
-  http_cache: Arc<dyn HttpCache>,
+  http_cache: HttpCacheRc,
   http_client: THttpClient,
-  memory_files: Arc<dyn MemoryFiles>,
+  memory_files: MemoryFilesRc,
   allow_remote: bool,
   cache_setting: CacheSetting,
   auth_tokens: AuthTokens,
@@ -459,9 +467,9 @@ impl<
   pub fn new(
     blob_store: TBlobStore,
     sys: TSys,
-    http_cache: Arc<dyn HttpCache>,
+    http_cache: HttpCacheRc,
     http_client: THttpClient,
-    memory_files: Arc<dyn MemoryFiles>,
+    memory_files: MemoryFilesRc,
     options: FileFetcherOptions,
   ) -> Self {
     Self {
@@ -625,7 +633,8 @@ impl<
     Ok(File {
       url: url.clone(),
       maybe_headers: Some(headers),
-      source: Arc::from(bytes),
+      #[allow(clippy::disallowed_types)] // ok for source
+      source: std::sync::Arc::from(bytes),
     })
   }
 
@@ -651,7 +660,8 @@ impl<
     Ok(File {
       url: url.clone(),
       maybe_headers: Some(headers),
-      source: Arc::from(blob.bytes),
+  #[allow(clippy::disallowed_types)] // ok for source
+      source: std::sync::Arc::from(blob.bytes),
     })
   }
 
@@ -735,7 +745,8 @@ impl<
         Ok(FileOrRedirect::File(File {
           url: url.clone(),
           maybe_headers: Some(headers),
-          source: Arc::from(bytes),
+  #[allow(clippy::disallowed_types)] // ok for source
+          source: std::sync::Arc::from(bytes),
         }))
       }
     }
