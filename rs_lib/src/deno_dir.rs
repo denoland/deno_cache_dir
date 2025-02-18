@@ -29,6 +29,8 @@ pub fn resolve_deno_dir<
     maybe_custom_root.or_else(|| sys.env_var_path("DENO_DIR"));
   let root: PathBuf = if let Some(root) = maybe_custom_root {
     root
+  } else if let Some(xdg_cache_dir) = sys.env_var_path("XDG_CACHE_HOME") {
+    xdg_cache_dir.join("deno")
   } else if let Some(cache_dir) = sys.env_cache_dir() {
     // We use the OS cache dir because all files deno writes are cache files
     // Once that changes we need to start using different roots if DENO_DIR
