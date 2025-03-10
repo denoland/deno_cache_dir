@@ -353,6 +353,24 @@ impl<
       },
     )))
   }
+
+  pub fn local_path_for_url(
+    &self,
+    url: &Url,
+  ) -> std::io::Result<Option<PathBuf>> {
+    if let Some(headers) = self.get_url_headers(url)? {
+      let is_redirect = headers.contains_key("location");
+      if is_redirect {
+        return Ok(None);
+      }
+
+      let local_path =
+        url_to_local_sub_path(url, headers_content_type(&headers))?;
+      Ok(Some(local_path.as_path_from_root(&self.path)))
+    } else {
+      Ok(None)
+    }
+  }
 }
 
 impl<
