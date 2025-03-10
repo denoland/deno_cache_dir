@@ -7,13 +7,15 @@ description = "Cache directory logic used in Deno"
 repository = "https://github.com/denoland/deno_cache"
 
 [lib]
-crate-type = ["cdylib", "lib"]
+crate-type = ["lib"]
 
 [features]
 default = ["file_fetcher"]
 file_fetcher = ["async-trait", "base64", "cache_control", "chrono", "data-url", "http"]
-wasm = ["console_error_panic_hook", "js-sys", "serde-wasm-bindgen", "wasm-bindgen", "sys_traits/wasm"]
+# Temporarily disable wasm support to avoid dependency conflicts
+# wasm = ["console_error_panic_hook", "js-sys", "serde-wasm-bindgen", "wasm-bindgen", "sys_traits/wasm"]
 sync = []
+async-module-loading = ["tokio"]
 
 [dependencies]
 async-trait = { version = "0.1.73", optional = true }
@@ -39,13 +41,19 @@ sha2 = "0.10.0"
 thiserror = "1.0.44"
 url = { version = "2.5.1", features = ["serde"] }
 
-console_error_panic_hook = { version = "0.1.6", optional = true }
-js-sys = { version = "=0.3.68", optional = true }
-wasm-bindgen = { version = "=0.2.91", optional = true }
-serde-wasm-bindgen = { version = "0.6.5", optional = true }
+# Temporarily comment out WASM dependencies to avoid conflicts
+# console_error_panic_hook = { version = "0.1.6", optional = true }
+# js-sys = { version = "=0.3.70", optional = true }
+# wasm-bindgen = { version = "=0.2.93", optional = true }
+# serde-wasm-bindgen = { version = "0.6.5", optional = true }
+
+[dependencies.tokio]
+version = "1.36.0"
+features = ["full"]
+optional = true
 
 [dev-dependencies]
 pretty_assertions = "1.4.0"
 sys_traits = { workspace = true, features = ["memory", "real", "getrandom", "libc", "winapi"] }
 tempfile = "3.7.1"
-tokio = { version = "1", features = ["rt", "macros"] }
+tokio = { version = "1.36.0", features = ["full"] }

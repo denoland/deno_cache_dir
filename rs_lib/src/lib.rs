@@ -33,6 +33,11 @@ pub use local::LocalHttpCache;
 pub use local::LocalHttpCacheRc;
 pub use local::LocalLspHttpCache;
 
+#[cfg(all(feature = "file_fetcher", feature = "async-module-loading"))]
+pub use file_fetcher::r#async::AsyncFileFetcherExt;
+
+// Temporarily disable wasm module to avoid dependency conflicts
+/*
 #[cfg(feature = "wasm")]
 pub mod wasm {
   use std::collections::HashMap;
@@ -273,3 +278,4 @@ pub mod wasm {
     JsValue::from(js_sys::Error::new(&e.to_string()))
   }
 }
+*/

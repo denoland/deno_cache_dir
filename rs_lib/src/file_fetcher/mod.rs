@@ -34,6 +34,9 @@ use crate::ChecksumIntegrityError;
 mod auth_tokens;
 mod http_util;
 
+#[cfg(feature = "async-module-loading")]
+pub mod r#async;
+
 pub use auth_tokens::AuthDomain;
 pub use auth_tokens::AuthToken;
 pub use auth_tokens::AuthTokenData;
@@ -442,7 +445,7 @@ pub struct FileFetcherOptions {
 }
 
 /// A structure for resolving, fetching and caching source files.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FileFetcher<
   TBlobStore: BlobStore,
   TSys: FsRead + SystemTimeNow,
