@@ -799,9 +799,9 @@ impl<
   /// yields Code(ResultPayload).
   /// If redirect occurs, does not follow and
   /// yields Redirect(url).
-  async fn send_request<'a>(
+  async fn send_request(
     &self,
-    args: SendRequestArgs<'a>,
+    args: SendRequestArgs<'_>,
   ) -> Result<SendRequestResponse, FetchNoFollowError> {
     let mut headers = HeaderMap::with_capacity(3);
 

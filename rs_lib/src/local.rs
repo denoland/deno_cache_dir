@@ -528,7 +528,7 @@ pub(super) struct LocalCacheSubPath<'a> {
   pub parts: Vec<Cow<'a, str>>,
 }
 
-impl<'a> LocalCacheSubPath<'a> {
+impl LocalCacheSubPath<'_> {
   pub fn as_path_from_root(&self, root_path: &Path) -> PathBuf {
     let mut path = root_path.to_path_buf();
     for part in &self.parts {
