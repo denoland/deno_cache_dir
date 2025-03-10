@@ -216,7 +216,9 @@ pub enum GlobalOrLocalHttpCache<
     + SystemTimeNow
     + std::fmt::Debug
     + FsRead
-    + Clone,
+    + Clone
+    + MaybeSend
+    + MaybeSync,
 > {
   Global(GlobalHttpCacheRc<Sys>),
   Local(LocalHttpCacheRc<Sys>),
@@ -233,7 +235,9 @@ impl<
       + SystemTimeNow
       + std::fmt::Debug
       + FsRead
-      + Clone,
+      + Clone
+      + MaybeSend
+      + MaybeSync,
   > HttpCache for GlobalOrLocalHttpCache<Sys>
 {
   fn read_headers(
