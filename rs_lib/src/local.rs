@@ -1081,9 +1081,9 @@ fn url_path_segments(url: &Url) -> impl Iterator<Item = &str> {
 
 #[cfg(test)]
 mod test {
-  use std::rc::Rc;
-  use crate::GlobalHttpCache;
   use super::*;
+  use crate::GlobalHttpCache;
+  use std::rc::Rc;
 
   use pretty_assertions::assert_eq;
   use sys_traits::impls::RealSys;
