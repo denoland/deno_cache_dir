@@ -353,6 +353,24 @@ impl<
       },
     )))
   }
+
+  pub fn local_path_for_url(
+    &self,
+    url: &Url,
+  ) -> std::io::Result<Option<PathBuf>> {
+    if let Some(headers) = self.get_url_headers(url)? {
+      let is_redirect = headers.contains_key("location");
+      if is_redirect {
+        return Ok(None);
+      }
+
+      let local_path =
+        url_to_local_sub_path(url, headers_content_type(&headers))?;
+      Ok(Some(local_path.as_path_from_root(&self.path)))
+    } else {
+      Ok(None)
+    }
+  }
 }
 
 impl<
@@ -528,7 +546,7 @@ pub(super) struct LocalCacheSubPath<'a> {
   pub parts: Vec<Cow<'a, str>>,
 }
 
-impl<'a> LocalCacheSubPath<'a> {
+impl LocalCacheSubPath<'_> {
   pub fn as_path_from_root(&self, root_path: &Path) -> PathBuf {
     let mut path = root_path.to_path_buf();
     for part in &self.parts {
@@ -1064,8 +1082,41 @@ fn url_path_segments(url: &Url) -> impl Iterator<Item = &str> {
 #[cfg(test)]
 mod test {
   use super::*;
+  use crate::GlobalHttpCache;
+  use std::rc::Rc;
 
   use pretty_assertions::assert_eq;
+  use sys_traits::impls::RealSys;
+  use tempfile::{tempdir, TempDir};
+
+  struct TestCaches {
+    global_cache: GlobalHttpCacheRc<RealSys>,
+    local_cache: LocalHttpCacheRc<RealSys>,
+    local_temp: PathBuf,
+    _temp: TempDir,
+  }
+
+  impl TestCaches {
+    fn new() -> Self {
+      let temp = tempdir().unwrap();
+      let global_temp = temp.path().join("global");
+      let local_temp = temp.path().join("local");
+
+      let global_cache = GlobalHttpCache::new(RealSys, global_temp);
+      let global_cache = Rc::new(global_cache);
+      let local_cache = Rc::new(LocalHttpCache::new(
+        local_temp.clone(),
+        global_cache.clone(),
+        GlobalToLocalCopy::Allow,
+      ));
+      Self {
+        global_cache,
+        local_cache,
+        local_temp,
+        _temp: temp,
+      }
+    }
+  }
 
   #[test]
   fn test_url_to_local_sub_path() {
@@ -1161,19 +1212,62 @@ mod test {
 
     #[track_caller]
     fn run_test(url: &str, headers: &[(&str, &str)], expected: &str) {
+      let test_caches = TestCaches::new();
+
       let url = Url::parse(url).unwrap();
-      let headers = headers
+      let headers: HashMap<String, String> = headers
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
+      test_caches
+        .global_cache
+        .set(&url, headers.clone(), b"console.log('hello');")
+        .unwrap();
+      let path = test_caches
+        .local_cache
+        .local_path_for_url(&url)
+        .unwrap()
+        .unwrap();
       let result =
         url_to_local_sub_path(&url, headers_content_type(&headers)).unwrap();
       let parts = result.parts.join("/");
+      assert_eq!(path, test_caches.local_temp.join(&parts));
       assert_eq!(parts, expected);
       assert_eq!(
         result.parts.iter().any(|p| p.starts_with('#')),
         result.has_hash
       )
     }
+  }
+
+  #[test]
+  fn local_path_no_headers() {
+    let test_caches = TestCaches::new();
+    let url = Url::parse("https://deno.land/x/mod.ts").unwrap();
+    assert!(matches!(
+      test_caches.local_cache.local_path_for_url(&url),
+      Ok(None)
+    ));
+  }
+
+  #[test]
+  fn local_path_redirect() {
+    let test_caches = TestCaches::new();
+    let url = Url::parse("https://deno.land/x/mod.ts").unwrap();
+    test_caches
+      .global_cache
+      .set(
+        &url,
+        HashMap::from([(
+          "location".to_string(),
+          "https://deno.land/x/mod.ts".to_string(),
+        )]),
+        b"",
+      )
+      .unwrap();
+    assert!(matches!(
+      test_caches.local_cache.local_path_for_url(&url),
+      Ok(None)
+    ));
   }
 }

@@ -19,6 +19,7 @@ pub use cache::CacheEntry;
 pub use cache::CacheReadFileError;
 pub use cache::Checksum;
 pub use cache::ChecksumIntegrityError;
+pub use cache::GlobalOrLocalHttpCache;
 pub use cache::GlobalToLocalCopy;
 pub use cache::HttpCache;
 pub use cache::HttpCacheItemKey;

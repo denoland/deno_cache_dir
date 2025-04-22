@@ -7,6 +7,15 @@ use std::borrow::Cow;
 use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::time::SystemTime;
+use sys_traits::FsCreateDirAll;
+use sys_traits::FsMetadata;
+use sys_traits::FsOpen;
+use sys_traits::FsRead;
+use sys_traits::FsRemoveFile;
+use sys_traits::FsRename;
+use sys_traits::SystemRandom;
+use sys_traits::SystemTimeNow;
+use sys_traits::ThreadSleep;
 use thiserror::Error;
 use url::Url;
 
@@ -15,6 +24,8 @@ use crate::common::checksum;
 use crate::common::HeadersMap;
 use crate::sync::MaybeSend;
 use crate::sync::MaybeSync;
+use crate::GlobalHttpCacheRc;
+use crate::LocalHttpCacheRc;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum GlobalToLocalCopy {
@@ -191,6 +202,115 @@ pub trait HttpCache: MaybeSend + MaybeSync + std::fmt::Debug {
     &self,
     key: &HttpCacheItemKey,
   ) -> std::io::Result<Option<SystemTime>>;
+}
+
+#[derive(Debug)]
+pub enum GlobalOrLocalHttpCache<
+  Sys: FsCreateDirAll
+    + FsMetadata
+    + FsOpen
+    + FsRemoveFile
+    + FsRename
+    + ThreadSleep
+    + SystemRandom
+    + SystemTimeNow
+    + std::fmt::Debug
+    + FsRead
+    + Clone
+    + MaybeSend
+    + MaybeSync,
+> {
+  Global(GlobalHttpCacheRc<Sys>),
+  Local(LocalHttpCacheRc<Sys>),
+}
+
+impl<
+    Sys: FsCreateDirAll
+      + FsMetadata
+      + FsOpen
+      + FsRemoveFile
+      + FsRename
+      + ThreadSleep
+      + SystemRandom
+      + SystemTimeNow
+      + std::fmt::Debug
+      + FsRead
+      + Clone
+      + MaybeSend
+      + MaybeSync,
+  > HttpCache for GlobalOrLocalHttpCache<Sys>
+{
+  fn read_headers(
+    &self,
+    key: &HttpCacheItemKey,
+  ) -> std::io::Result<Option<HeadersMap>> {
+    match self {
+      GlobalOrLocalHttpCache::Global(global) => global.read_headers(key),
+      GlobalOrLocalHttpCache::Local(local) => local.read_headers(key),
+    }
+  }
+
+  fn cache_item_key<'a>(
+    &self,
+    url: &'a Url,
+  ) -> std::io::Result<HttpCacheItemKey<'a>> {
+    match self {
+      GlobalOrLocalHttpCache::Global(global) => global.cache_item_key(url),
+      GlobalOrLocalHttpCache::Local(local) => local.cache_item_key(url),
+    }
+  }
+
+  fn contains(&self, url: &Url) -> bool {
+    match self {
+      GlobalOrLocalHttpCache::Global(global) => global.contains(url),
+      GlobalOrLocalHttpCache::Local(local) => local.contains(url),
+    }
+  }
+
+  fn set(
+    &self,
+    url: &Url,
+    headers: HeadersMap,
+    content: &[u8],
+  ) -> std::io::Result<()> {
+    match self {
+      GlobalOrLocalHttpCache::Global(global) => {
+        global.set(url, headers, content)
+      }
+      GlobalOrLocalHttpCache::Local(local) => local.set(url, headers, content),
+    }
+  }
+
+  fn get(
+    &self,
+    key: &HttpCacheItemKey,
+    maybe_checksum: Option<Checksum>,
+  ) -> Result<Option<CacheEntry>, CacheReadFileError> {
+    match self {
+      GlobalOrLocalHttpCache::Global(global) => global.get(key, maybe_checksum),
+      GlobalOrLocalHttpCache::Local(local) => local.get(key, maybe_checksum),
+    }
+  }
+
+  fn read_modified_time(
+    &self,
+    key: &HttpCacheItemKey,
+  ) -> std::io::Result<Option<SystemTime>> {
+    match self {
+      GlobalOrLocalHttpCache::Global(global) => global.read_modified_time(key),
+      GlobalOrLocalHttpCache::Local(local) => local.read_modified_time(key),
+    }
+  }
+
+  fn read_download_time(
+    &self,
+    key: &HttpCacheItemKey,
+  ) -> std::io::Result<Option<SystemTime>> {
+    match self {
+      GlobalOrLocalHttpCache::Global(global) => global.read_download_time(key),
+      GlobalOrLocalHttpCache::Local(local) => local.read_download_time(key),
+    }
+  }
 }
 
 #[cfg(test)]
