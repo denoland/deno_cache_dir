@@ -1081,9 +1081,13 @@ fn url_path_segments(url: &Url) -> impl Iterator<Item = &str> {
 
 #[cfg(test)]
 mod test {
+  use std::rc::Rc;
+  use crate::GlobalHttpCache;
   use super::*;
 
   use pretty_assertions::assert_eq;
+  use sys_traits::impls::RealSys;
+  use tempfile::tempdir;
 
   #[test]
   fn test_url_to_local_sub_path() {
@@ -1179,14 +1183,31 @@ mod test {
 
     #[track_caller]
     fn run_test(url: &str, headers: &[(&str, &str)], expected: &str) {
+      let temp = tempdir().unwrap();
+      let global_temp = temp.path().join("global");
+      let local_temp = temp.path().join("local");
+
+      let global_cache = GlobalHttpCache::new(RealSys, global_temp);
+      let global_cache = Rc::new(global_cache);
+      let local = LocalHttpCache::new(
+        local_temp.clone(),
+        global_cache.clone(),
+        GlobalToLocalCopy::Allow,
+      );
+
       let url = Url::parse(url).unwrap();
-      let headers = headers
+      let headers: HashMap<String, String> = headers
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
+      global_cache
+        .set(&url, headers.clone(), b"console.log('hello');")
+        .unwrap();
+      let path = local.local_path_for_url(&url).unwrap().unwrap();
       let result =
         url_to_local_sub_path(&url, headers_content_type(&headers)).unwrap();
       let parts = result.parts.join("/");
+      assert_eq!(path, local_temp.join(&parts));
       assert_eq!(parts, expected);
       assert_eq!(
         result.parts.iter().any(|p| p.starts_with('#')),
