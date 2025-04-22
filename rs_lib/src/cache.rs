@@ -204,7 +204,7 @@ pub trait HttpCache: MaybeSend + MaybeSync + std::fmt::Debug {
   ) -> std::io::Result<Option<SystemTime>>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum GlobalOrLocalHttpCache<
   Sys: FsCreateDirAll
     + FsMetadata
