@@ -238,6 +238,48 @@ impl<
       + Clone
       + MaybeSend
       + MaybeSync,
+  > From<GlobalHttpCacheRc<Sys>> for GlobalOrLocalHttpCache<Sys>
+{
+  fn from(global: GlobalHttpCacheRc<Sys>) -> Self {
+    Self::Global(global)
+  }
+}
+
+impl<
+    Sys: FsCreateDirAll
+      + FsMetadata
+      + FsOpen
+      + FsRemoveFile
+      + FsRename
+      + ThreadSleep
+      + SystemRandom
+      + SystemTimeNow
+      + std::fmt::Debug
+      + FsRead
+      + Clone
+      + MaybeSend
+      + MaybeSync,
+  > From<LocalHttpCacheRc<Sys>> for GlobalOrLocalHttpCache<Sys>
+{
+  fn from(local: LocalHttpCacheRc<Sys>) -> Self {
+    Self::Local(local)
+  }
+}
+
+impl<
+    Sys: FsCreateDirAll
+      + FsMetadata
+      + FsOpen
+      + FsRemoveFile
+      + FsRename
+      + ThreadSleep
+      + SystemRandom
+      + SystemTimeNow
+      + std::fmt::Debug
+      + FsRead
+      + Clone
+      + MaybeSend
+      + MaybeSync,
   > HttpCache for GlobalOrLocalHttpCache<Sys>
 {
   fn read_headers(
