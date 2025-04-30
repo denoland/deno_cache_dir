@@ -1108,7 +1108,7 @@ mod test {
         local_temp.clone(),
         global_cache.clone(),
         GlobalToLocalCopy::Allow,
-        Url::parse("https://jsr.io").unwrap(),
+        Url::parse("https://jsr.io/").unwrap(),
       ));
       Self {
         global_cache,
