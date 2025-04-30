@@ -251,7 +251,7 @@ pub struct LocalHttpCache<TSys: LocalHttpCacheSys> {
   manifest: LocalCacheManifest<TSys>,
   global_cache: GlobalHttpCacheRc<TSys>,
   allow_global_to_local: GlobalToLocalCopy,
-  jsr_registry_url: Option<Cow<'static, Url>>,
+  jsr_registry_url: Option<Url>,
 }
 
 impl<TSys: LocalHttpCacheSys> LocalHttpCache<TSys> {
@@ -259,7 +259,7 @@ impl<TSys: LocalHttpCacheSys> LocalHttpCache<TSys> {
     path: PathBuf,
     global_cache: GlobalHttpCacheRc<TSys>,
     allow_global_to_local: GlobalToLocalCopy,
-    jsr_registry_url: Cow<'static, Url>,
+    jsr_registry_url: Url,
   ) -> Self {
     #[cfg(not(feature = "wasm"))]
     assert!(path.is_absolute());
@@ -1108,7 +1108,7 @@ mod test {
         local_temp.clone(),
         global_cache.clone(),
         GlobalToLocalCopy::Allow,
-        Cow::Owned(Url::parse("https://jsr.io").unwrap()),
+        Url::parse("https://jsr.io").unwrap(),
       ));
       Self {
         global_cache,

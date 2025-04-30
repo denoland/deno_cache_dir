@@ -150,7 +150,7 @@ pub mod wasm {
         } else {
           GlobalToLocalCopy::Disallow
         },
-        Cow::Owned(jsr_url),
+        jsr_url,
       );
       Self { cache: local }
     }
