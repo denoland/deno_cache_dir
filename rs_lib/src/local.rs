@@ -1273,6 +1273,29 @@ mod test {
   }
 
   #[test]
+  fn test_copy_version_metadata_file() {
+    let test_caches = TestCaches::new();
+    let metadata_url =
+      Url::parse("https://jsr.io/@david/dax/1.2.3_meta.json").unwrap();
+    let data =
+      r#"{ "moduleGraph2": "testing", "checksums": { "test": "test" } }"#;
+    test_caches
+      .global_cache
+      .set(&metadata_url, Default::default(), data.as_bytes())
+      .unwrap();
+    let key = test_caches
+      .local_cache
+      .cache_item_key(&metadata_url)
+      .unwrap();
+    let final_data = test_caches.local_cache.get(&key, None).unwrap().unwrap();
+    assert_eq!(
+      String::from_utf8(final_data.content.to_vec()).unwrap(),
+      // had the moduleGraph2 property stripped
+      r#"{"checksums":{"test":"test"}}"#
+    );
+  }
+
+  #[test]
   fn test_is_jsr_version_metadata_url() {
     let cases = [
       ("https://jsr.io/@test/test/1.2.3_meta.json", true),
