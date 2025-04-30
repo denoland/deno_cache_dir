@@ -103,6 +103,7 @@ impl<TSys: LocalHttpCacheSys> LocalLspHttpCache<TSys> {
         // 2. We need to verify the checksums for JSR https specifiers match what
         //    is found in the package's manifest.
         allow_global_to_local: GlobalToLocalCopy::Disallow,
+        jsr_registry_url: None, // only used when GlobalToLocalCopy::Allow
       },
     }
   }
@@ -250,6 +251,7 @@ pub struct LocalHttpCache<TSys: LocalHttpCacheSys> {
   manifest: LocalCacheManifest<TSys>,
   global_cache: GlobalHttpCacheRc<TSys>,
   allow_global_to_local: GlobalToLocalCopy,
+  jsr_registry_url: Option<Cow<'static, Url>>,
 }
 
 impl<TSys: LocalHttpCacheSys> LocalHttpCache<TSys> {
@@ -257,6 +259,7 @@ impl<TSys: LocalHttpCacheSys> LocalHttpCache<TSys> {
     path: PathBuf,
     global_cache: GlobalHttpCacheRc<TSys>,
     allow_global_to_local: GlobalToLocalCopy,
+    jsr_registry_url: Cow<'static, Url>,
   ) -> Self {
     #[cfg(not(feature = "wasm"))]
     assert!(path.is_absolute());
@@ -269,6 +272,7 @@ impl<TSys: LocalHttpCacheSys> LocalHttpCache<TSys> {
       manifest,
       global_cache,
       allow_global_to_local,
+      jsr_registry_url: Some(jsr_registry_url),
     }
   }
 
@@ -332,6 +336,54 @@ impl<TSys: LocalHttpCacheSys> LocalHttpCache<TSys> {
       Ok(None)
     }
   }
+
+  fn transform_content_on_copy_to_local(
+    &self,
+    url: &Url,
+    content: Cow<'static, [u8]>,
+  ) -> Cow<'static, [u8]> {
+    let Some(jsr_url) = &self.jsr_registry_url else {
+      return content;
+    };
+    if is_jsr_version_metadata_url(url, jsr_url) {
+      if let Some(data) = transform_jsr_version_metadata(&content) {
+        return Cow::Owned(data);
+      }
+    }
+    content
+  }
+}
+
+fn is_jsr_version_metadata_url(url: &Url, jsr_url: &Url) -> bool {
+  // example url: https://jsr.io/@david/dax/0.43.0_meta.json
+  let Some(suffix) = url.as_str().strip_prefix(jsr_url.as_str()) else {
+    return false;
+  };
+  let Some(suffix) = suffix.strip_prefix('@') else {
+    return false;
+  };
+  let Some(prefix) = suffix.strip_suffix("_meta.json") else {
+    return false;
+  };
+  prefix.chars().filter(|c| *c == '/').count() == 2
+}
+
+fn transform_jsr_version_metadata(content: &[u8]) -> Option<Vec<u8>> {
+  let mut json_data =
+    serde_json::from_slice::<serde_json::Value>(content).ok()?;
+  let obj = json_data.as_object_mut()?;
+  let keys_to_remove = obj
+    .keys()
+    .filter(|k| k.starts_with("moduleGraph"))
+    .cloned()
+    .collect::<Vec<_>>();
+  if keys_to_remove.is_empty() {
+    return None;
+  }
+  for key in keys_to_remove {
+    obj.remove(&key);
+  }
+  serde_json::to_vec(&json_data).ok()
 }
 
 impl<TSys: LocalHttpCacheSys> HttpCache for LocalHttpCache<TSys> {
@@ -434,13 +486,15 @@ impl<TSys: LocalHttpCacheSys> HttpCache for LocalHttpCache<TSys> {
                 let maybe_global_cache_file =
                   self.global_cache.get(&global_key, maybe_checksum)?;
                 if let Some(file) = maybe_global_cache_file {
+                  let content = self
+                    .transform_content_on_copy_to_local(&key.url, file.content);
                   atomic_write_file_with_retries(
                     self.env(),
                     &local_file_path,
-                    &file.content,
+                    &content,
                     CACHE_PERM,
                   )?;
-                  file.content
+                  content
                 } else {
                   return Ok(None);
                 }
@@ -1054,6 +1108,7 @@ mod test {
         local_temp.clone(),
         global_cache.clone(),
         GlobalToLocalCopy::Allow,
+        Cow::Owned(Url::parse("https://jsr.io").unwrap()),
       ));
       Self {
         global_cache,
@@ -1215,5 +1270,37 @@ mod test {
       test_caches.local_cache.local_path_for_url(&url),
       Ok(None)
     ));
+  }
+
+  #[test]
+  fn test_is_jsr_version_metadata_url() {
+    let cases = [
+      ("https://jsr.io/@test/test/1.2.3_meta.json", true),
+      ("https://jsr.io/@test/test/test/1.2.3_meta.json", false),
+      ("https://jsr.io/@test/test/meta.json", false),
+      ("https://jsr.io/test/test/1.2.3_meta.json", false),
+    ];
+    let jsr_url = Url::parse("https://jsr.io/").unwrap();
+    for (url, expected) in cases {
+      let value =
+        is_jsr_version_metadata_url(&Url::parse(url).unwrap(), &jsr_url);
+      assert_eq!(value, expected);
+    }
+  }
+
+  #[test]
+  fn test_transform_jsr_version_metadata() {
+    let cases = [
+      (
+        r#"{ "moduleGraph1": "data", "moduleGraph2": "data", "moduleGraph3": "data", "other": "data" }"#,
+        Some(r#"{"other":"data"}"#),
+      ),
+      (r#"{ "other": "data" }"#, None),
+    ];
+
+    for (input, expected) in cases {
+      let output = transform_jsr_version_metadata(input.as_bytes());
+      assert_eq!(output.as_deref(), expected.map(|e| e.as_bytes()))
+    }
   }
 }

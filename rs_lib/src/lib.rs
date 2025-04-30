@@ -36,6 +36,7 @@ pub use local::LocalLspHttpCache;
 
 #[cfg(feature = "wasm")]
 pub mod wasm {
+  use std::borrow::Cow;
   use std::collections::HashMap;
   use std::io::ErrorKind;
   use std::path::PathBuf;
@@ -46,6 +47,7 @@ pub mod wasm {
   use sys_traits::impls::wasm_path_to_str;
   use sys_traits::impls::wasm_string_to_path;
   use sys_traits::impls::RealSys;
+  use sys_traits::EnvVar;
   use url::Url;
   use wasm_bindgen::prelude::*;
 
@@ -131,6 +133,15 @@ pub mod wasm {
       console_error_panic_hook::set_once();
       let global =
         crate::GlobalHttpCache::new(RealSys, wasm_string_to_path(global_path));
+      let jsr_url = RealSys
+        .env_var("JSR_URL")
+        .ok()
+        .and_then(|url| {
+          // ensure there is a trailing slash for the directory
+          let registry_url = format!("{}/", url.trim_end_matches('/'));
+          Url::parse(&registry_url).ok()
+        })
+        .unwrap_or_else(|| Url::parse("https://jsr.io/").unwrap());
       let local = crate::LocalHttpCache::new(
         wasm_string_to_path(local_path),
         new_rc(global),
@@ -139,6 +150,7 @@ pub mod wasm {
         } else {
           GlobalToLocalCopy::Disallow
         },
+        Cow::Owned(jsr_url),
       );
       Self { cache: local }
     }

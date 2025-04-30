@@ -2,6 +2,7 @@
 
 #![allow(clippy::disallowed_methods)]
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
@@ -17,6 +18,9 @@ use serde_json::json;
 use sys_traits::impls::RealSys;
 use tempfile::TempDir;
 use url::Url;
+
+static JSR_URL: std::sync::LazyLock<Url> =
+  std::sync::LazyLock::new(|| Url::parse("https://jsr.io/").unwrap());
 
 #[test]
 fn test_global_create_cache() {
@@ -110,6 +114,7 @@ fn test_local_global_cache() {
     local_cache_path.clone(),
     global_cache.clone(),
     GlobalToLocalCopy::Allow,
+    Cow::Borrowed(&JSR_URL),
   );
 
   let manifest_file_path = local_cache_path.join("manifest.json");
@@ -256,6 +261,7 @@ fn test_local_global_cache() {
     local_cache_path.clone(),
     global_cache.clone(),
     GlobalToLocalCopy::Allow,
+    Cow::Borrowed(&JSR_URL),
   );
 
   // now try caching a file with many headers
@@ -322,6 +328,7 @@ fn test_local_global_cache() {
       local_cache_path.to_path_buf(),
       global_cache.clone(),
       GlobalToLocalCopy::Allow,
+      Cow::Borrowed(&JSR_URL),
     ));
   }
 
@@ -331,6 +338,7 @@ fn test_local_global_cache() {
     local_cache_path.clone(),
     global_cache.clone(),
     GlobalToLocalCopy::Allow,
+    Cow::Borrowed(&JSR_URL),
   );
 
   // try a file that can't be mapped to the file system
@@ -388,6 +396,7 @@ fn test_local_global_cache() {
         local_cache_path.to_path_buf(),
         global_cache.clone(),
         GlobalToLocalCopy::Allow,
+        Cow::Borrowed(&JSR_URL),
       );
       assert_eq!(
         String::from_utf8(
@@ -423,6 +432,7 @@ fn test_local_global_cache() {
     local_cache_path.clone(),
     global_cache.clone(),
     GlobalToLocalCopy::Allow,
+    Cow::Borrowed(&JSR_URL),
   );
 
   // now try a redirect
@@ -461,6 +471,7 @@ fn test_local_global_cache() {
     local_cache_path.clone(),
     global_cache.clone(),
     GlobalToLocalCopy::Allow,
+    Cow::Borrowed(&JSR_URL),
   );
   let url = Url::parse("https://deno.land/x/mod.ts").unwrap();
   let matching_checksum =
@@ -530,6 +541,7 @@ fn test_lsp_local_cache() {
     local_cache_path.to_path_buf(),
     global_cache.clone(),
     GlobalToLocalCopy::Allow,
+    Cow::Borrowed(&JSR_URL),
   );
   let create_readonly_cache = || {
     LocalLspHttpCache::new(local_cache_path.to_path_buf(), global_cache.clone())
