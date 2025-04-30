@@ -1302,6 +1302,7 @@ mod test {
       ("https://jsr.io/@test/test/test/1.2.3_meta.json", false),
       ("https://jsr.io/@test/test/meta.json", false),
       ("https://jsr.io/test/test/1.2.3_meta.json", false),
+      ("https://jsr.com/@test/test/1.2.3_meta.json", false),
     ];
     let jsr_url = Url::parse("https://jsr.io/").unwrap();
     for (url, expected) in cases {
