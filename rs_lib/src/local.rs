@@ -41,11 +41,25 @@ use super::Checksum;
 use super::HttpCache;
 use super::HttpCacheItemKey;
 
-/// A vendor/ folder http cache for the lsp that provides functionality
-/// for doing a reverse mapping.
-#[derive(Debug)]
-pub struct LocalLspHttpCache<
-  TSys: FsCreateDirAll
+pub trait LocalHttpCacheSys:
+  FsCreateDirAll
+  + FsMetadata
+  + FsOpen
+  + FsRead
+  + FsRemoveFile
+  + FsRename
+  + ThreadSleep
+  + SystemRandom
+  + SystemTimeNow
+  + MaybeSend
+  + MaybeSync
+  + std::fmt::Debug
+  + Clone
+{
+}
+
+impl<T> LocalHttpCacheSys for T where
+  T: FsCreateDirAll
     + FsMetadata
     + FsOpen
     + FsRead
@@ -57,27 +71,18 @@ pub struct LocalLspHttpCache<
     + MaybeSend
     + MaybeSync
     + std::fmt::Debug
-    + Clone,
-> {
+    + Clone
+{
+}
+
+/// A vendor/ folder http cache for the lsp that provides functionality
+/// for doing a reverse mapping.
+#[derive(Debug)]
+pub struct LocalLspHttpCache<TSys: LocalHttpCacheSys> {
   cache: LocalHttpCache<TSys>,
 }
 
-impl<
-    TSys: FsCreateDirAll
-      + FsMetadata
-      + FsOpen
-      + FsRead
-      + FsRemoveFile
-      + FsRename
-      + ThreadSleep
-      + SystemRandom
-      + SystemTimeNow
-      + MaybeSend
-      + MaybeSync
-      + std::fmt::Debug
-      + Clone,
-  > LocalLspHttpCache<TSys>
-{
+impl<TSys: LocalHttpCacheSys> LocalLspHttpCache<TSys> {
   pub fn new(path: PathBuf, global_cache: GlobalHttpCacheRc<TSys>) -> Self {
     #[cfg(not(feature = "wasm"))]
     assert!(path.is_absolute());
@@ -185,22 +190,7 @@ impl<
   }
 }
 
-impl<
-    TSys: FsCreateDirAll
-      + FsMetadata
-      + FsOpen
-      + FsRead
-      + FsRemoveFile
-      + FsRename
-      + ThreadSleep
-      + SystemRandom
-      + SystemTimeNow
-      + MaybeSend
-      + MaybeSync
-      + std::fmt::Debug
-      + Clone,
-  > HttpCache for LocalLspHttpCache<TSys>
-{
+impl<TSys: LocalHttpCacheSys> HttpCache for LocalLspHttpCache<TSys> {
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
@@ -255,43 +245,14 @@ impl<
 pub type LocalHttpCacheRc<TSys> = crate::sync::MaybeArc<LocalHttpCache<TSys>>;
 
 #[derive(Debug)]
-pub struct LocalHttpCache<
-  TSys: FsCreateDirAll
-    + FsMetadata
-    + FsOpen
-    + FsRead
-    + FsRemoveFile
-    + FsRename
-    + ThreadSleep
-    + SystemRandom
-    + SystemTimeNow
-    + MaybeSend
-    + MaybeSync
-    + std::fmt::Debug
-    + Clone,
-> {
+pub struct LocalHttpCache<TSys: LocalHttpCacheSys> {
   path: PathBuf,
   manifest: LocalCacheManifest<TSys>,
   global_cache: GlobalHttpCacheRc<TSys>,
   allow_global_to_local: GlobalToLocalCopy,
 }
 
-impl<
-    TSys: FsCreateDirAll
-      + FsMetadata
-      + FsOpen
-      + FsRead
-      + FsRemoveFile
-      + FsRename
-      + ThreadSleep
-      + SystemRandom
-      + SystemTimeNow
-      + MaybeSend
-      + MaybeSync
-      + std::fmt::Debug
-      + Clone,
-  > LocalHttpCache<TSys>
-{
+impl<TSys: LocalHttpCacheSys> LocalHttpCache<TSys> {
   pub fn new(
     path: PathBuf,
     global_cache: GlobalHttpCacheRc<TSys>,
@@ -373,22 +334,7 @@ impl<
   }
 }
 
-impl<
-    TSys: FsCreateDirAll
-      + FsMetadata
-      + FsOpen
-      + FsRead
-      + FsRemoveFile
-      + FsRename
-      + ThreadSleep
-      + SystemRandom
-      + SystemTimeNow
-      + MaybeSend
-      + MaybeSync
-      + std::fmt::Debug
-      + Clone,
-  > HttpCache for LocalHttpCache<TSys>
-{
+impl<TSys: LocalHttpCacheSys> HttpCache for LocalHttpCache<TSys> {
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,

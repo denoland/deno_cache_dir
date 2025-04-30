@@ -31,35 +31,50 @@ use crate::sync::MaybeSync;
 
 mod cache_file;
 
-#[allow(clippy::disallowed_types)]
-pub type GlobalHttpCacheRc<TSys> = crate::sync::MaybeArc<GlobalHttpCache<TSys>>;
+pub trait GlobalHttpCacheSys:
+  FsCreateDirAll
+  + FsMetadata
+  + FsOpen
+  + FsRead
+  + FsRemoveFile
+  + FsRename
+  + ThreadSleep
+  + SystemRandom
+  + SystemTimeNow
+  + std::fmt::Debug
+  + MaybeSend
+  + MaybeSync
+  + Clone
+{
+}
 
-#[derive(Debug)]
-pub struct GlobalHttpCache<
-  Sys: FsCreateDirAll
+impl<T> GlobalHttpCacheSys for T where
+  T: FsCreateDirAll
     + FsMetadata
     + FsOpen
+    + FsRead
     + FsRemoveFile
     + FsRename
     + ThreadSleep
     + SystemRandom
-    + Clone,
-> {
+    + SystemTimeNow
+    + std::fmt::Debug
+    + MaybeSend
+    + MaybeSync
+    + Clone
+{
+}
+
+#[allow(clippy::disallowed_types)]
+pub type GlobalHttpCacheRc<TSys> = crate::sync::MaybeArc<GlobalHttpCache<TSys>>;
+
+#[derive(Debug)]
+pub struct GlobalHttpCache<Sys: GlobalHttpCacheSys> {
   path: PathBuf,
   pub(crate) sys: Sys,
 }
 
-impl<
-    Sys: FsCreateDirAll
-      + FsMetadata
-      + FsOpen
-      + FsRemoveFile
-      + FsRename
-      + ThreadSleep
-      + SystemRandom
-      + Clone,
-  > GlobalHttpCache<Sys>
-{
+impl<Sys: GlobalHttpCacheSys> GlobalHttpCache<Sys> {
   pub fn new(sys: Sys, path: PathBuf) -> Self {
     #[cfg(not(feature = "wasm"))]
     assert!(path.is_absolute());
@@ -83,22 +98,7 @@ impl<
   }
 }
 
-impl<
-    TSys: FsCreateDirAll
-      + FsMetadata
-      + FsOpen
-      + FsRead
-      + FsRemoveFile
-      + FsRename
-      + ThreadSleep
-      + SystemRandom
-      + SystemTimeNow
-      + std::fmt::Debug
-      + MaybeSend
-      + MaybeSync
-      + Clone,
-  > HttpCache for GlobalHttpCache<TSys>
-{
+impl<TSys: GlobalHttpCacheSys> HttpCache for GlobalHttpCache<TSys> {
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
