@@ -7,21 +7,14 @@ use std::borrow::Cow;
 use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::time::SystemTime;
-use sys_traits::FsCreateDirAll;
-use sys_traits::FsMetadata;
-use sys_traits::FsOpen;
-use sys_traits::FsRead;
-use sys_traits::FsRemoveFile;
-use sys_traits::FsRename;
-use sys_traits::SystemRandom;
-use sys_traits::SystemTimeNow;
-use sys_traits::ThreadSleep;
 use thiserror::Error;
 use url::Url;
 
 use crate::common::base_url_to_filename_parts;
 use crate::common::checksum;
 use crate::common::HeadersMap;
+use crate::global::GlobalHttpCacheSys;
+use crate::local::LocalHttpCacheSys;
 use crate::sync::MaybeSend;
 use crate::sync::MaybeSync;
 use crate::GlobalHttpCacheRc;
@@ -205,82 +198,29 @@ pub trait HttpCache: MaybeSend + MaybeSync + std::fmt::Debug {
 }
 
 #[derive(Debug, Clone)]
-pub enum GlobalOrLocalHttpCache<
-  Sys: FsCreateDirAll
-    + FsMetadata
-    + FsOpen
-    + FsRemoveFile
-    + FsRename
-    + ThreadSleep
-    + SystemRandom
-    + SystemTimeNow
-    + std::fmt::Debug
-    + FsRead
-    + Clone
-    + MaybeSend
-    + MaybeSync,
-> {
+pub enum GlobalOrLocalHttpCache<Sys: GlobalHttpCacheSys + LocalHttpCacheSys> {
   Global(GlobalHttpCacheRc<Sys>),
   Local(LocalHttpCacheRc<Sys>),
 }
 
-impl<
-    Sys: FsCreateDirAll
-      + FsMetadata
-      + FsOpen
-      + FsRemoveFile
-      + FsRename
-      + ThreadSleep
-      + SystemRandom
-      + SystemTimeNow
-      + std::fmt::Debug
-      + FsRead
-      + Clone
-      + MaybeSend
-      + MaybeSync,
-  > From<GlobalHttpCacheRc<Sys>> for GlobalOrLocalHttpCache<Sys>
+impl<Sys: GlobalHttpCacheSys + LocalHttpCacheSys> From<GlobalHttpCacheRc<Sys>>
+  for GlobalOrLocalHttpCache<Sys>
 {
   fn from(global: GlobalHttpCacheRc<Sys>) -> Self {
     Self::Global(global)
   }
 }
 
-impl<
-    Sys: FsCreateDirAll
-      + FsMetadata
-      + FsOpen
-      + FsRemoveFile
-      + FsRename
-      + ThreadSleep
-      + SystemRandom
-      + SystemTimeNow
-      + std::fmt::Debug
-      + FsRead
-      + Clone
-      + MaybeSend
-      + MaybeSync,
-  > From<LocalHttpCacheRc<Sys>> for GlobalOrLocalHttpCache<Sys>
+impl<Sys: GlobalHttpCacheSys + LocalHttpCacheSys> From<LocalHttpCacheRc<Sys>>
+  for GlobalOrLocalHttpCache<Sys>
 {
   fn from(local: LocalHttpCacheRc<Sys>) -> Self {
     Self::Local(local)
   }
 }
 
-impl<
-    Sys: FsCreateDirAll
-      + FsMetadata
-      + FsOpen
-      + FsRemoveFile
-      + FsRename
-      + ThreadSleep
-      + SystemRandom
-      + SystemTimeNow
-      + std::fmt::Debug
-      + FsRead
-      + Clone
-      + MaybeSend
-      + MaybeSync,
-  > HttpCache for GlobalOrLocalHttpCache<Sys>
+impl<Sys: GlobalHttpCacheSys + LocalHttpCacheSys> HttpCache
+  for GlobalOrLocalHttpCache<Sys>
 {
   fn read_headers(
     &self,
