@@ -36,7 +36,6 @@ pub use local::LocalLspHttpCache;
 
 #[cfg(feature = "wasm")]
 pub mod wasm {
-  use std::borrow::Cow;
   use std::collections::HashMap;
   use std::io::ErrorKind;
   use std::path::PathBuf;
