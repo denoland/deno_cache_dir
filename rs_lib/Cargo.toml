@@ -36,7 +36,7 @@ parking_lot = "0.12.1"
 serde = "1.0.183"
 serde_json = "1.0.104"
 sha2 = "0.10.0"
-thiserror = "1.0.44"
+thiserror = "2"
 url = { version = "2.5.1", features = ["serde"] }
 
 console_error_panic_hook = { version = "0.1.6", optional = true }

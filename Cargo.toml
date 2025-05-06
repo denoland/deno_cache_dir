@@ -3,7 +3,7 @@ resolver = "2"
 members = ["rs_lib"]
 
 [workspace.dependencies]
-sys_traits = "0.1.6"
+sys_traits = "0.1.9"
 
 [profile.release]
 codegen-units = 1
