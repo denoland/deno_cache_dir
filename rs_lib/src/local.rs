@@ -41,6 +41,7 @@ use super::Checksum;
 use super::HttpCache;
 use super::HttpCacheItemKey;
 
+#[sys_traits::auto_impl]
 pub trait LocalHttpCacheSys:
   FsCreateDirAll
   + FsMetadata
@@ -55,23 +56,6 @@ pub trait LocalHttpCacheSys:
   + MaybeSync
   + std::fmt::Debug
   + Clone
-{
-}
-
-impl<T> LocalHttpCacheSys for T where
-  T: FsCreateDirAll
-    + FsMetadata
-    + FsOpen
-    + FsRead
-    + FsRemoveFile
-    + FsRename
-    + ThreadSleep
-    + SystemRandom
-    + SystemTimeNow
-    + MaybeSend
-    + MaybeSync
-    + std::fmt::Debug
-    + Clone
 {
 }
 
