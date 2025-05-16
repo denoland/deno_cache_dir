@@ -19,9 +19,13 @@ pub enum DenoDirResolutionError {
   },
 }
 
-pub fn resolve_deno_dir<
-  Sys: EnvCacheDir + EnvHomeDir + EnvVar + EnvCurrentDir,
->(
+#[sys_traits::auto_impl]
+pub trait ResolveDenoDirSys:
+  EnvCacheDir + EnvHomeDir + EnvVar + EnvCurrentDir
+{
+}
+
+pub fn resolve_deno_dir<Sys: ResolveDenoDirSys>(
   sys: &Sys,
   maybe_custom_root: Option<PathBuf>,
 ) -> Result<PathBuf, DenoDirResolutionError> {

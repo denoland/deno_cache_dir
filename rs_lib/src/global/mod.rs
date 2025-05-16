@@ -31,6 +31,7 @@ use crate::sync::MaybeSync;
 
 mod cache_file;
 
+#[sys_traits::auto_impl]
 pub trait GlobalHttpCacheSys:
   FsCreateDirAll
   + FsMetadata
@@ -45,23 +46,6 @@ pub trait GlobalHttpCacheSys:
   + MaybeSend
   + MaybeSync
   + Clone
-{
-}
-
-impl<T> GlobalHttpCacheSys for T where
-  T: FsCreateDirAll
-    + FsMetadata
-    + FsOpen
-    + FsRead
-    + FsRemoveFile
-    + FsRename
-    + ThreadSleep
-    + SystemRandom
-    + SystemTimeNow
-    + std::fmt::Debug
-    + MaybeSend
-    + MaybeSync
-    + Clone
 {
 }
 

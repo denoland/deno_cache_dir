@@ -28,10 +28,13 @@ pub use cache::SerializedCachedUrlMetadata;
 pub use common::HeadersMap;
 pub use deno_dir::resolve_deno_dir;
 pub use deno_dir::DenoDirResolutionError;
+pub use deno_dir::ResolveDenoDirSys;
 pub use global::GlobalHttpCache;
 pub use global::GlobalHttpCacheRc;
+pub use global::GlobalHttpCacheSys;
 pub use local::LocalHttpCache;
 pub use local::LocalHttpCacheRc;
+pub use local::LocalHttpCacheSys;
 pub use local::LocalLspHttpCache;
 
 #[cfg(feature = "wasm")]
