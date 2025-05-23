@@ -2,7 +2,10 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::io::Read;
+use std::path::Path;
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 use boxed_error::Boxed;
 use data_url::DataUrl;
@@ -16,7 +19,10 @@ use http::header::IF_NONE_MATCH;
 use http::header::LOCATION;
 use http::HeaderValue;
 use log::debug;
-use sys_traits::FsRead;
+use sys_traits::FsFileMetadata;
+use sys_traits::FsMetadataValue;
+use sys_traits::FsOpen;
+use sys_traits::OpenOptions;
 use sys_traits::SystemTimeNow;
 use thiserror::Error;
 use url::Url;
@@ -86,6 +92,7 @@ impl FileOrRedirect {
     } else {
       Ok(FileOrRedirect::File(File {
         url: url.clone(),
+        mtime: None,
         maybe_headers: Some(cache_entry.metadata.headers),
         #[allow(clippy::disallowed_types)] // ok for source
         source: std::sync::Arc::from(cache_entry.content),
@@ -103,6 +110,7 @@ pub struct File {
   /// The _final_ specifier for the file.  The requested specifier and the final
   /// specifier maybe different for remote files that have been redirected.
   pub url: Url,
+  pub mtime: Option<SystemTime>,
   pub maybe_headers: Option<HashMap<String, String>>,
   /// The source of the file.
   pub source: FileSource,
@@ -428,10 +436,16 @@ pub trait BlobStore: std::fmt::Debug + MaybeSend + MaybeSync {
 
 #[derive(Debug, Default)]
 pub struct FetchNoFollowOptions<'a> {
+  pub local: FetchLocalOptions,
   pub maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
   pub maybe_checksum: Option<Checksum<'a>>,
   pub maybe_accept: Option<&'a str>,
   pub maybe_cache_setting: Option<&'a CacheSetting>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct FetchLocalOptions {
+  pub include_mtime: bool,
 }
 
 #[derive(Debug)]
@@ -441,11 +455,14 @@ pub struct FileFetcherOptions {
   pub auth_tokens: AuthTokens,
 }
 
+#[sys_traits::auto_impl]
+pub trait FileFetcherSys: FsOpen + SystemTimeNow {}
+
 /// A structure for resolving, fetching and caching source files.
 #[derive(Debug)]
 pub struct FileFetcher<
   TBlobStore: BlobStore,
-  TSys: FsRead + SystemTimeNow,
+  TSys: FileFetcherSys,
   THttpClient: HttpClient,
 > {
   blob_store: TBlobStore,
@@ -458,11 +475,8 @@ pub struct FileFetcher<
   auth_tokens: AuthTokens,
 }
 
-impl<
-    TBlobStore: BlobStore,
-    TSys: FsRead + SystemTimeNow,
-    THttpClient: HttpClient,
-  > FileFetcher<TBlobStore, TSys, THttpClient>
+impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
+  FileFetcher<TBlobStore, TSys, THttpClient>
 {
   pub fn new(
     blob_store: TBlobStore,
@@ -536,7 +550,7 @@ impl<
     } else if scheme == "file" {
       // we do not in memory cache files, as this would prevent files on the
       // disk changing effecting things like workers and dynamic imports.
-      let maybe_file = self.fetch_local(url)?;
+      let maybe_file = self.fetch_local(url, &options.local)?;
       match maybe_file {
         Some(file) => Ok(FileOrRedirect::File(file)),
         None => Err(FetchNoFollowErrorKind::NotFound(url.clone()).into_box()),
@@ -632,6 +646,7 @@ impl<
     let (bytes, headers) = parse(url)?;
     Ok(File {
       url: url.clone(),
+      mtime: None,
       maybe_headers: Some(headers),
       #[allow(clippy::disallowed_types)] // ok for source
       source: std::sync::Arc::from(bytes),
@@ -659,6 +674,7 @@ impl<
 
     Ok(File {
       url: url.clone(),
+      mtime: None,
       maybe_headers: Some(headers),
   #[allow(clippy::disallowed_types)] // ok for source
       source: std::sync::Arc::from(blob.bytes),
@@ -744,8 +760,9 @@ impl<
         }
         Ok(FileOrRedirect::File(File {
           url: url.clone(),
+          mtime: None,
           maybe_headers: Some(headers),
-  #[allow(clippy::disallowed_types)] // ok for source
+          #[allow(clippy::disallowed_types)] // ok for source
           source: std::sync::Arc::from(bytes),
         }))
       }
@@ -878,10 +895,38 @@ impl<
   pub fn fetch_local(
     &self,
     url: &Url,
+    options: &FetchLocalOptions,
   ) -> Result<Option<File>, FetchLocalError> {
     let local = url_to_file_path(url)?;
+    match self.fetch_local_inner(url, &local, options) {
+      Ok(file) => Ok(Some(file)),
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+      Err(err) => Err(
+        FetchLocalErrorKind::ReadingFile(FailedReadingLocalFileError {
+          url: url.clone(),
+          source: err,
+        })
+        .into_box(),
+      ),
+    }
+  }
+
+  fn fetch_local_inner(
+    &self,
+    url: &Url,
+    path: &Path,
+    options: &FetchLocalOptions,
+  ) -> std::io::Result<File> {
+    let mut file = self.sys.fs_open(path, &OpenOptions::new_read())?;
+    let mtime = if options.include_mtime {
+      file.fs_file_metadata().and_then(|m| m.modified()).ok()
+    } else {
+      None
+    };
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)?;
     // If it doesnt have a extension, we want to treat it as typescript by default
-    let headers = if local.extension().is_none() {
+    let headers = if path.extension().is_none() {
       Some(HashMap::from([(
         "content-type".to_string(),
         "application/typescript".to_string(),
@@ -889,27 +934,12 @@ impl<
     } else {
       None
     };
-    let bytes = match self.sys.fs_read(&local) {
-      Ok(bytes) => bytes,
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-        return Ok(None);
-      }
-      Err(err) => {
-        return Err(
-          FetchLocalErrorKind::ReadingFile(FailedReadingLocalFileError {
-            url: url.clone(),
-            source: err,
-          })
-          .into_box(),
-        );
-      }
-    };
-
-    Ok(Some(File {
+    Ok(File {
       url: url.clone(),
+      mtime,
       maybe_headers: headers,
       source: bytes.into(),
-    }))
+    })
   }
 }
 
