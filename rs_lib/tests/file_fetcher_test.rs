@@ -7,6 +7,7 @@ use std::time::SystemTime;
 
 use deno_cache_dir::file_fetcher::AuthTokens;
 use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_cache_dir::file_fetcher::FetchLocalOptions;
 use deno_cache_dir::file_fetcher::FetchNoFollowErrorKind;
 use deno_cache_dir::file_fetcher::FetchNoFollowOptions;
 use deno_cache_dir::file_fetcher::FileFetcher;
@@ -61,18 +62,23 @@ async fn test_file_fetcher_redirects() {
   sys.fs_create_dir_all("/").unwrap();
   sys.fs_write("/some_path.ts", "text").unwrap();
 
-  let result = file_fetcher
-    .fetch_no_follow(
-      &Url::parse("file:///some_path.ts").unwrap(),
-      FetchNoFollowOptions::default(),
-    )
-    .await;
-  match result.unwrap() {
-    FileOrRedirect::File(file) => {
-      assert_eq!(file.mtime, Some(time));
-      assert_eq!(file.source.to_vec(), b"text");
+  for include_mtime in [true, false] {
+    let result = file_fetcher
+      .fetch_no_follow(
+        &Url::parse("file:///some_path.ts").unwrap(),
+        FetchNoFollowOptions {
+          local: FetchLocalOptions { include_mtime },
+          ..Default::default()
+        },
+      )
+      .await;
+    match result.unwrap() {
+      FileOrRedirect::File(file) => {
+        assert_eq!(file.mtime, if include_mtime { Some(time) } else { None });
+        assert_eq!(file.source.to_vec(), b"text");
+      }
+      FileOrRedirect::Redirect(_) => unreachable!(),
     }
-    FileOrRedirect::Redirect(_) => unreachable!(),
   }
 }
 

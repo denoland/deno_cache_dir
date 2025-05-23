@@ -436,10 +436,16 @@ pub trait BlobStore: std::fmt::Debug + MaybeSend + MaybeSync {
 
 #[derive(Debug, Default)]
 pub struct FetchNoFollowOptions<'a> {
+  pub local: FetchLocalOptions,
   pub maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
   pub maybe_checksum: Option<Checksum<'a>>,
   pub maybe_accept: Option<&'a str>,
   pub maybe_cache_setting: Option<&'a CacheSetting>,
+}
+
+#[derive(Debug, Default)]
+pub struct FetchLocalOptions {
+  pub include_mtime: bool,
 }
 
 #[derive(Debug)]
@@ -544,7 +550,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
     } else if scheme == "file" {
       // we do not in memory cache files, as this would prevent files on the
       // disk changing effecting things like workers and dynamic imports.
-      let maybe_file = self.fetch_local(url)?;
+      let maybe_file = self.fetch_local(url, &options.local)?;
       match maybe_file {
         Some(file) => Ok(FileOrRedirect::File(file)),
         None => Err(FetchNoFollowErrorKind::NotFound(url.clone()).into_box()),
@@ -889,9 +895,10 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
   pub fn fetch_local(
     &self,
     url: &Url,
+    options: &FetchLocalOptions,
   ) -> Result<Option<File>, FetchLocalError> {
     let local = url_to_file_path(url)?;
-    match self.fetch_local_inner(url, &local) {
+    match self.fetch_local_inner(url, &local, options) {
       Ok(file) => Ok(Some(file)),
       Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
       Err(err) => Err(
@@ -904,9 +911,18 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
     }
   }
 
-  fn fetch_local_inner(&self, url: &Url, path: &Path) -> std::io::Result<File> {
+  fn fetch_local_inner(
+    &self,
+    url: &Url,
+    path: &Path,
+    options: &FetchLocalOptions,
+  ) -> std::io::Result<File> {
     let mut file = self.sys.fs_open(&path, &OpenOptions::new_read())?;
-    let mtime = file.fs_file_metadata().and_then(|m| m.modified()).ok();
+    let mtime = if options.include_mtime {
+      file.fs_file_metadata().and_then(|m| m.modified()).ok()
+    } else {
+      None
+    };
     let mut bytes = Vec::new();
     file.read_to_end(&mut bytes)?;
     // If it doesnt have a extension, we want to treat it as typescript by default
