@@ -3,6 +3,7 @@
 #![allow(clippy::disallowed_methods)]
 
 use std::rc::Rc;
+use std::time::SystemTime;
 
 use deno_cache_dir::file_fetcher::AuthTokens;
 use deno_cache_dir::file_fetcher::CacheSetting;
@@ -10,6 +11,7 @@ use deno_cache_dir::file_fetcher::FetchNoFollowErrorKind;
 use deno_cache_dir::file_fetcher::FetchNoFollowOptions;
 use deno_cache_dir::file_fetcher::FileFetcher;
 use deno_cache_dir::file_fetcher::FileFetcherOptions;
+use deno_cache_dir::file_fetcher::FileOrRedirect;
 use deno_cache_dir::file_fetcher::HttpClient;
 use deno_cache_dir::file_fetcher::NullBlobStore;
 use deno_cache_dir::file_fetcher::NullMemoryFiles;
@@ -18,6 +20,8 @@ use deno_cache_dir::file_fetcher::SendResponse;
 use deno_cache_dir::memory::MemoryHttpCache;
 use http::HeaderMap;
 use sys_traits::impls::InMemorySys;
+use sys_traits::FsCreateDirAll;
+use sys_traits::FsWrite;
 use url::Url;
 
 #[tokio::test]
@@ -36,7 +40,8 @@ async fn test_file_fetcher_redirects() {
     }
   }
 
-  let file_fetcher = create_file_fetcher(TestHttpClient);
+  let sys = InMemorySys::default();
+  let file_fetcher = create_file_fetcher(sys.clone(), TestHttpClient);
   let result = file_fetcher
     .fetch_no_follow(
       &Url::parse("http://localhost/bad_redirect").unwrap(),
@@ -50,14 +55,34 @@ async fn test_file_fetcher_redirects() {
     }
     err => unreachable!("{:?}", err),
   }
+
+  let time = SystemTime::now();
+  sys.set_time(Some(time));
+  sys.fs_create_dir_all("/").unwrap();
+  sys.fs_write("/some_path.ts", "text").unwrap();
+
+  let result = file_fetcher
+    .fetch_no_follow(
+      &Url::parse("file:///some_path.ts").unwrap(),
+      FetchNoFollowOptions::default(),
+    )
+    .await;
+  match result.unwrap() {
+    FileOrRedirect::File(file) => {
+      assert_eq!(file.mtime, Some(time));
+      assert_eq!(file.source.to_vec(), b"text");
+    }
+    FileOrRedirect::Redirect(_) => unreachable!(),
+  }
 }
 
 fn create_file_fetcher<TClient: HttpClient>(
+  sys: InMemorySys,
   client: TClient,
 ) -> FileFetcher<NullBlobStore, InMemorySys, TClient> {
   FileFetcher::new(
     NullBlobStore,
-    InMemorySys::default(),
+    sys,
     Rc::new(MemoryHttpCache::default()),
     client,
     Rc::new(NullMemoryFiles),
