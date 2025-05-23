@@ -443,7 +443,7 @@ pub struct FetchNoFollowOptions<'a> {
   pub maybe_cache_setting: Option<&'a CacheSetting>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct FetchLocalOptions {
   pub include_mtime: bool,
 }
@@ -917,7 +917,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
     path: &Path,
     options: &FetchLocalOptions,
   ) -> std::io::Result<File> {
-    let mut file = self.sys.fs_open(&path, &OpenOptions::new_read())?;
+    let mut file = self.sys.fs_open(path, &OpenOptions::new_read())?;
     let mtime = if options.include_mtime {
       file.fs_file_metadata().and_then(|m| m.modified()).ok()
     } else {

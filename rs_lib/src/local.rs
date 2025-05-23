@@ -471,7 +471,7 @@ impl<TSys: LocalHttpCacheSys> HttpCache for LocalHttpCache<TSys> {
                   self.global_cache.get(&global_key, maybe_checksum)?;
                 if let Some(file) = maybe_global_cache_file {
                   let content = self
-                    .transform_content_on_copy_to_local(&key.url, file.content);
+                    .transform_content_on_copy_to_local(key.url, file.content);
                   atomic_write_file_with_retries(
                     self.env(),
                     &local_file_path,
