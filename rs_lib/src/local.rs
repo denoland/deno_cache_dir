@@ -321,11 +321,11 @@ impl<TSys: LocalHttpCacheSys> LocalHttpCache<TSys> {
     }
   }
 
-  fn transform_content_on_copy_to_local(
+  fn transform_content_on_copy_to_local<'a>(
     &self,
     url: &Url,
-    content: Cow<'static, [u8]>,
-  ) -> Cow<'static, [u8]> {
+    content: Cow<'a, [u8]>,
+  ) -> Cow<'a, [u8]> {
     let Some(jsr_url) = &self.jsr_registry_url else {
       return content;
     };
@@ -425,11 +425,13 @@ impl<TSys: LocalHttpCacheSys> HttpCache for LocalHttpCache<TSys> {
     let sub_path = url_to_local_sub_path(url, headers_content_type(&headers))?;
 
     if !is_redirect {
+      let content =
+        self.transform_content_on_copy_to_local(url, Cow::Borrowed(content));
       // Cache content
       atomic_write_file_with_retries(
         self.env(),
         &sub_path.as_path_from_root(&self.path),
-        content,
+        &content,
         CACHE_PERM,
       )?;
     }
@@ -1258,24 +1260,47 @@ mod test {
   #[test]
   fn test_copy_version_metadata_file() {
     let test_caches = TestCaches::new();
-    let metadata_url =
-      Url::parse("https://jsr.io/@david/dax/1.2.3_meta.json").unwrap();
     let data =
       r#"{ "moduleGraph2": "testing", "checksums": { "test": "test" } }"#;
-    test_caches
-      .global_cache
-      .set(&metadata_url, Default::default(), data.as_bytes())
-      .unwrap();
-    let key = test_caches
-      .local_cache
-      .cache_item_key(&metadata_url)
-      .unwrap();
-    let final_data = test_caches.local_cache.get(&key, None).unwrap().unwrap();
-    assert_eq!(
-      String::from_utf8(final_data.content.to_vec()).unwrap(),
-      // had the moduleGraph2 property stripped
-      r#"{"checksums":{"test":"test"},"lockfileChecksum":"dc108ae9ffb13086cb1551692960c21893991a7f0f9dc770814ff21522fd1d48"}"#
-    );
+    // has the moduleGraph2 property stripped
+    let expected_data = r#"{"checksums":{"test":"test"},"lockfileChecksum":"dc108ae9ffb13086cb1551692960c21893991a7f0f9dc770814ff21522fd1d48"}"#;
+    {
+      let metadata_url =
+        Url::parse("https://jsr.io/@david/dax/1.2.3_meta.json").unwrap();
+      test_caches
+        .global_cache
+        .set(&metadata_url, Default::default(), data.as_bytes())
+        .unwrap();
+      let key = test_caches
+        .local_cache
+        .cache_item_key(&metadata_url)
+        .unwrap();
+      let final_data =
+        test_caches.local_cache.get(&key, None).unwrap().unwrap();
+      assert_eq!(
+        String::from_utf8(final_data.content.to_vec()).unwrap(),
+        expected_data,
+      );
+    }
+    {
+      // now try just setting directly in the local cache
+      let metadata_url =
+        Url::parse("https://jsr.io/@david/dax/1.2.2_meta.json").unwrap();
+      test_caches
+        .local_cache
+        .set(&metadata_url, Default::default(), data.as_bytes())
+        .unwrap();
+      let key = test_caches
+        .local_cache
+        .cache_item_key(&metadata_url)
+        .unwrap();
+      let final_data =
+        test_caches.local_cache.get(&key, None).unwrap().unwrap();
+      assert_eq!(
+        String::from_utf8(final_data.content.to_vec()).unwrap(),
+        expected_data,
+      );
+    }
   }
 
   #[test]
