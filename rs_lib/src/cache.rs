@@ -142,6 +142,14 @@ pub struct SerializedCachedUrlMetadata {
 pub struct CacheEntry {
   pub metadata: SerializedCachedUrlMetadata,
   pub content: Cow<'static, [u8]>,
+  /// Checksum of the content that should be used in the lockfile.
+  ///
+  /// This is necesary to pass along when the provided content differs
+  /// from the checksum that should be stored (ex. JSR metadata files
+  /// are stored with less information in the vendor directory than
+  /// in the global directory, but we need the global directory checksum
+  /// and the local dir's checksum)
+  pub original_checksum: Option<String>,
 }
 
 /// Computed cache key, which can help reduce the work of computing the cache key multiple times.
