@@ -357,17 +357,15 @@ fn transform_jsr_version_metadata(content: &[u8]) -> Option<Vec<u8>> {
   let mut json_data =
     serde_json::from_slice::<serde_json::Value>(content).ok()?;
   let obj = json_data.as_object_mut()?;
-  obj.insert("originalChecksum".into(), checksum.into());
   let keys_to_remove = obj
     .keys()
     .filter(|k| k.starts_with("moduleGraph"))
     .cloned()
     .collect::<Vec<_>>();
-  if keys_to_remove.is_empty() {
-    return None;
-  }
   for key in keys_to_remove {
     obj.remove(&key);
+  }
+  obj.insert("originalChecksum".into(), checksum.into());
   serde_json::to_vec(&json_data).ok()
 }
 
@@ -1302,14 +1300,24 @@ mod test {
     let cases = [
       (
         r#"{ "moduleGraph1": "data", "moduleGraph2": "data", "moduleGraph3": "data", "other": "data" }"#,
-        Some(r#"{"other":"data"}"#),
+        Some(
+          r#"{"other":"data","originalChecksum":"1438025e1aa277249e97fa99a2283542ab1156b0967c3e0997f78bee22d121ad"}"#,
+        ),
       ),
-      (r#"{ "other": "data" }"#, None),
+      (
+        r#"{ "other": "data" }"#,
+        Some(
+          r#"{"other":"data","originalChecksum":"62db4d2ded7cb6348ccb1648b2a27ed96dbe0fadc42c8359024c0213bab2f0e5"}"#,
+        ),
+      ),
     ];
 
     for (input, expected) in cases {
       let output = transform_jsr_version_metadata(input.as_bytes());
-      assert_eq!(output.as_deref(), expected.map(|e| e.as_bytes()))
+      assert_eq!(
+        output.map(|o| String::from_utf8(o).unwrap()).as_deref(),
+        expected
+      )
     }
   }
 }
