@@ -353,9 +353,11 @@ fn is_jsr_version_metadata_url(url: &Url, jsr_url: &Url) -> bool {
 }
 
 fn transform_jsr_version_metadata(content: &[u8]) -> Option<Vec<u8>> {
+  let checksum = checksum(content);
   let mut json_data =
     serde_json::from_slice::<serde_json::Value>(content).ok()?;
   let obj = json_data.as_object_mut()?;
+  obj.insert("originalChecksum".into(), checksum.into());
   let keys_to_remove = obj
     .keys()
     .filter(|k| k.starts_with("moduleGraph"))
@@ -366,7 +368,6 @@ fn transform_jsr_version_metadata(content: &[u8]) -> Option<Vec<u8>> {
   }
   for key in keys_to_remove {
     obj.remove(&key);
-  }
   serde_json::to_vec(&json_data).ok()
 }
 
