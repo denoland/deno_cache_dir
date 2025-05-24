@@ -1274,7 +1274,7 @@ mod test {
     assert_eq!(
       String::from_utf8(final_data.content.to_vec()).unwrap(),
       // had the moduleGraph2 property stripped
-      r#"{"checksums":{"test":"test"}}"#
+      r#"{"checksums":{"test":"test"},"originalChecksum":"dc108ae9ffb13086cb1551692960c21893991a7f0f9dc770814ff21522fd1d48"}"#
     );
   }
 
