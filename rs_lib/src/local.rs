@@ -365,7 +365,7 @@ fn transform_jsr_version_metadata(content: &[u8]) -> Option<Vec<u8>> {
   for key in keys_to_remove {
     obj.remove(&key);
   }
-  obj.insert("originalChecksum".into(), checksum.into());
+  obj.insert("lockfileChecksum".into(), checksum.into());
   serde_json::to_vec(&json_data).ok()
 }
 
@@ -1274,7 +1274,7 @@ mod test {
     assert_eq!(
       String::from_utf8(final_data.content.to_vec()).unwrap(),
       // had the moduleGraph2 property stripped
-      r#"{"checksums":{"test":"test"},"originalChecksum":"dc108ae9ffb13086cb1551692960c21893991a7f0f9dc770814ff21522fd1d48"}"#
+      r#"{"checksums":{"test":"test"},"lockfileChecksum":"dc108ae9ffb13086cb1551692960c21893991a7f0f9dc770814ff21522fd1d48"}"#
     );
   }
 
@@ -1301,13 +1301,13 @@ mod test {
       (
         r#"{ "moduleGraph1": "data", "moduleGraph2": "data", "moduleGraph3": "data", "other": "data" }"#,
         Some(
-          r#"{"other":"data","originalChecksum":"1438025e1aa277249e97fa99a2283542ab1156b0967c3e0997f78bee22d121ad"}"#,
+          r#"{"other":"data","lockfileChecksum":"1438025e1aa277249e97fa99a2283542ab1156b0967c3e0997f78bee22d121ad"}"#,
         ),
       ),
       (
         r#"{ "other": "data" }"#,
         Some(
-          r#"{"other":"data","originalChecksum":"62db4d2ded7cb6348ccb1648b2a27ed96dbe0fadc42c8359024c0213bab2f0e5"}"#,
+          r#"{"other":"data","lockfileChecksum":"62db4d2ded7cb6348ccb1648b2a27ed96dbe0fadc42c8359024c0213bab2f0e5"}"#,
         ),
       ),
     ];

@@ -6,9 +6,6 @@ license = "MIT"
 description = "Cache directory logic used in Deno"
 repository = "https://github.com/denoland/deno_cache"
 
-[lib]
-crate-type = ["cdylib", "lib"]
-
 [features]
 default = ["file_fetcher"]
 file_fetcher = ["async-trait", "base64", "cache_control", "chrono", "data-url", "http"]
