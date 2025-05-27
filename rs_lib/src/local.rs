@@ -102,7 +102,7 @@ impl<TSys: LocalHttpCacheSys> LocalLspHttpCache<TSys> {
       url_to_local_sub_path(url, maybe_content_type).ok()?
     };
     let path = sub_path.as_path_from_root(&self.cache.path);
-    if self.cache.env().fs_is_file_no_err(&path) {
+    if self.cache.sys().fs_is_file_no_err(&path) {
       Url::from_file_path(path).ok()
     } else {
       None
@@ -260,8 +260,12 @@ impl<TSys: LocalHttpCacheSys> LocalHttpCache<TSys> {
     }
   }
 
+  pub fn global_cache(&self) -> &GlobalHttpCacheRc<TSys> {
+    &self.global_cache
+  }
+
   #[inline]
-  fn env(&self) -> &TSys {
+  fn sys(&self) -> &TSys {
     &self.global_cache.sys
   }
 
@@ -274,7 +278,7 @@ impl<TSys: LocalHttpCacheSys> LocalHttpCache<TSys> {
     // to the local
     let local_path = url_to_local_sub_path(url, None)?;
     if self
-      .env()
+      .sys()
       .fs_is_file_no_err(local_path.as_path_from_root(&self.path))
     {
       return Ok(Some(Default::default()));
@@ -402,7 +406,7 @@ impl<TSys: LocalHttpCacheSys> HttpCache for LocalHttpCache<TSys> {
       let local_path =
         url_to_local_sub_path(key.url, headers_content_type(&headers))?;
       if let Ok(metadata) = self
-        .env()
+        .sys()
         .fs_metadata(local_path.as_path_from_root(&self.path))
       {
         if let Ok(modified_time) = metadata.modified() {
@@ -428,7 +432,7 @@ impl<TSys: LocalHttpCacheSys> HttpCache for LocalHttpCache<TSys> {
     if !is_redirect {
       // Cache content
       atomic_write_file_with_retries(
-        self.env(),
+        self.sys(),
         &sub_path.as_path_from_root(&self.path),
         content,
         CACHE_PERM,
@@ -460,7 +464,7 @@ impl<TSys: LocalHttpCacheSys> HttpCache for LocalHttpCache<TSys> {
           let local_file_path =
             url_to_local_sub_path(key.url, headers_content_type(&headers))?
               .as_path_from_root(&self.path);
-          let file_bytes_result = self.env().fs_read(&local_file_path);
+          let file_bytes_result = self.sys().fs_read(&local_file_path);
           match file_bytes_result {
             Ok(bytes) => bytes,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
@@ -473,7 +477,7 @@ impl<TSys: LocalHttpCacheSys> HttpCache for LocalHttpCache<TSys> {
                   let content = self
                     .transform_content_on_copy_to_local(key.url, file.content);
                   atomic_write_file_with_retries(
-                    self.env(),
+                    self.sys(),
                     &local_file_path,
                     &content,
                     CACHE_PERM,

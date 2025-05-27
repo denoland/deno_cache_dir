@@ -198,29 +198,40 @@ pub trait HttpCache: MaybeSend + MaybeSync + std::fmt::Debug {
 }
 
 #[derive(Debug, Clone)]
-pub enum GlobalOrLocalHttpCache<Sys: GlobalHttpCacheSys + LocalHttpCacheSys> {
-  Global(GlobalHttpCacheRc<Sys>),
-  Local(LocalHttpCacheRc<Sys>),
+pub enum GlobalOrLocalHttpCache<TSys: GlobalHttpCacheSys + LocalHttpCacheSys> {
+  Global(GlobalHttpCacheRc<TSys>),
+  Local(LocalHttpCacheRc<TSys>),
 }
 
-impl<Sys: GlobalHttpCacheSys + LocalHttpCacheSys> From<GlobalHttpCacheRc<Sys>>
-  for GlobalOrLocalHttpCache<Sys>
+impl<TSys: GlobalHttpCacheSys + LocalHttpCacheSys>
+  GlobalOrLocalHttpCache<TSys>
 {
-  fn from(global: GlobalHttpCacheRc<Sys>) -> Self {
+  pub fn global_cache(&self) -> &GlobalHttpCacheRc<TSys> {
+    match self {
+      GlobalOrLocalHttpCache::Global(global) => global,
+      GlobalOrLocalHttpCache::Local(local) => local.global_cache(),
+    }
+  }
+}
+
+impl<TSys: GlobalHttpCacheSys + LocalHttpCacheSys> From<GlobalHttpCacheRc<TSys>>
+  for GlobalOrLocalHttpCache<TSys>
+{
+  fn from(global: GlobalHttpCacheRc<TSys>) -> Self {
     Self::Global(global)
   }
 }
 
-impl<Sys: GlobalHttpCacheSys + LocalHttpCacheSys> From<LocalHttpCacheRc<Sys>>
-  for GlobalOrLocalHttpCache<Sys>
+impl<TSys: GlobalHttpCacheSys + LocalHttpCacheSys> From<LocalHttpCacheRc<TSys>>
+  for GlobalOrLocalHttpCache<TSys>
 {
-  fn from(local: LocalHttpCacheRc<Sys>) -> Self {
+  fn from(local: LocalHttpCacheRc<TSys>) -> Self {
     Self::Local(local)
   }
 }
 
-impl<Sys: GlobalHttpCacheSys + LocalHttpCacheSys> HttpCache
-  for GlobalOrLocalHttpCache<Sys>
+impl<TSys: GlobalHttpCacheSys + LocalHttpCacheSys> HttpCache
+  for GlobalOrLocalHttpCache<TSys>
 {
   fn read_headers(
     &self,
