@@ -46,6 +46,7 @@ pub use auth_tokens::AuthTokens;
 pub use http::HeaderMap;
 pub use http::HeaderName;
 pub use http::HeaderValue;
+pub use http::StatusCode;
 
 /// Indicates how cached source files should be handled.
 #[derive(Debug, Clone, Eq, PartialEq)]
