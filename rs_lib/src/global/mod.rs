@@ -60,7 +60,7 @@ pub struct GlobalHttpCache<Sys: GlobalHttpCacheSys> {
 
 impl<Sys: GlobalHttpCacheSys> GlobalHttpCache<Sys> {
   pub fn new(sys: Sys, path: PathBuf) -> Self {
-    #[cfg(not(feature = "wasm"))]
+    #[cfg(not(target_arch = "wasm32"))]
     assert!(path.is_absolute());
     Self { path, sys }
   }

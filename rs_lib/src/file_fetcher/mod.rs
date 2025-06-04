@@ -17,7 +17,6 @@ use http::header::ACCEPT;
 use http::header::AUTHORIZATION;
 use http::header::IF_NONE_MATCH;
 use http::header::LOCATION;
-use http::HeaderValue;
 use log::debug;
 use sys_traits::FsFileMetadata;
 use sys_traits::FsMetadataValue;
@@ -45,6 +44,9 @@ pub use auth_tokens::AuthToken;
 pub use auth_tokens::AuthTokenData;
 pub use auth_tokens::AuthTokens;
 pub use http::HeaderMap;
+pub use http::HeaderName;
+pub use http::HeaderValue;
+pub use http::StatusCode;
 
 /// Indicates how cached source files should be handled.
 #[derive(Debug, Clone, Eq, PartialEq)]
