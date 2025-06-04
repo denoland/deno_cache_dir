@@ -68,7 +68,7 @@ pub struct LocalLspHttpCache<TSys: LocalHttpCacheSys> {
 
 impl<TSys: LocalHttpCacheSys> LocalLspHttpCache<TSys> {
   pub fn new(path: PathBuf, global_cache: GlobalHttpCacheRc<TSys>) -> Self {
-    #[cfg(not(feature = "wasm"))]
+    #[cfg(not(target_arch = "wasm32"))]
     assert!(path.is_absolute());
     let manifest = LocalCacheManifest::new_for_lsp(
       path.join("manifest.json"),
@@ -245,7 +245,7 @@ impl<TSys: LocalHttpCacheSys> LocalHttpCache<TSys> {
     allow_global_to_local: GlobalToLocalCopy,
     jsr_registry_url: Url,
   ) -> Self {
-    #[cfg(not(feature = "wasm"))]
+    #[cfg(not(target_arch = "wasm32"))]
     assert!(path.is_absolute());
     let manifest = LocalCacheManifest::new(
       path.join("manifest.json"),
