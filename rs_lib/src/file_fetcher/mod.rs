@@ -562,7 +562,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
     // note: this debug output is used by the tests
     debug!("FileFetcher::fetch_no_follow - specifier: {}", url);
     self
-      .fetch_no_follow_with_strategy(&RealFetchStrategy(self), url, options)
+      .fetch_no_follow_with_strategy(&FetchStrategy(self), url, options)
       .await
   }
 
@@ -577,15 +577,13 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
     // note: this debug output is used by the tests
     debug!("FileFetcher::ensure_cached_no_follow - specifier: {}", url);
     self
-      .fetch_no_follow_with_strategy(
-        &EnsureCachedFetchStrategy(self),
-        url,
-        options,
-      )
+      .fetch_no_follow_with_strategy(&EnsureCachedStrategy(self), url, options)
       .await
   }
 
-  async fn fetch_no_follow_with_strategy<TStrategy: FetchStrategy>(
+  async fn fetch_no_follow_with_strategy<
+    TStrategy: FetchOrEnsureCacheStrategy,
+  >(
     &self,
     strategy: &TStrategy,
     url: &Url,
@@ -725,7 +723,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
     })
   }
 
-  async fn fetch_remote_no_follow<TStrategy: FetchStrategy>(
+  async fn fetch_remote_no_follow<TStrategy: FetchOrEnsureCacheStrategy>(
     &self,
     strategy: &TStrategy,
     url: &Url,
@@ -1026,7 +1024,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
 }
 
 #[async_trait::async_trait(?Send)]
-trait FetchStrategy {
+trait FetchOrEnsureCacheStrategy {
   type ReturnValue;
 
   fn handle_memory_file(&self, file: File) -> Self::ReturnValue;
@@ -1062,7 +1060,7 @@ trait FetchStrategy {
   ) -> Result<Self::ReturnValue, FetchNoFollowError>;
 }
 
-struct RealFetchStrategy<
+struct FetchStrategy<
   'a,
   TBlobStore: BlobStore,
   TSys: FileFetcherSys,
@@ -1071,7 +1069,8 @@ struct RealFetchStrategy<
 
 #[async_trait::async_trait(?Send)]
 impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
-  FetchStrategy for RealFetchStrategy<'_, TBlobStore, TSys, THttpClient>
+  FetchOrEnsureCacheStrategy
+  for FetchStrategy<'_, TBlobStore, TSys, THttpClient>
 {
   type ReturnValue = FileOrRedirect;
 
@@ -1131,7 +1130,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
   }
 }
 
-struct EnsureCachedFetchStrategy<
+struct EnsureCachedStrategy<
   'a,
   TBlobStore: BlobStore,
   TSys: FileFetcherSys,
@@ -1140,8 +1139,8 @@ struct EnsureCachedFetchStrategy<
 
 #[async_trait::async_trait(?Send)]
 impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
-  FetchStrategy
-  for EnsureCachedFetchStrategy<'_, TBlobStore, TSys, THttpClient>
+  FetchOrEnsureCacheStrategy
+  for EnsureCachedStrategy<'_, TBlobStore, TSys, THttpClient>
 {
   type ReturnValue = CachedOrRedirect;
 
