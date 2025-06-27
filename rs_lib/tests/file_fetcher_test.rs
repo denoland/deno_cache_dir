@@ -7,6 +7,7 @@ use std::time::SystemTime;
 
 use deno_cache_dir::file_fetcher::AuthTokens;
 use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_cache_dir::file_fetcher::CachedOrRedirect;
 use deno_cache_dir::file_fetcher::FetchLocalOptions;
 use deno_cache_dir::file_fetcher::FetchNoFollowErrorKind;
 use deno_cache_dir::file_fetcher::FetchNoFollowOptions;
@@ -78,6 +79,80 @@ async fn test_file_fetcher_redirects() {
         assert_eq!(file.source.to_vec(), b"text");
       }
       FileOrRedirect::Redirect(_) => unreachable!(),
+    }
+  }
+}
+
+#[tokio::test]
+async fn test_file_fetcher_ensure_cached() {
+  #[derive(Debug)]
+  struct TestHttpClient;
+
+  #[async_trait::async_trait(?Send)]
+  impl HttpClient for TestHttpClient {
+    async fn send_no_follow(
+      &self,
+      url: &Url,
+      _headers: HeaderMap,
+    ) -> Result<SendResponse, SendError> {
+      if url.path() == "/redirect" {
+        let mut header_map = HeaderMap::new();
+        header_map.insert(http::header::LOCATION, "/home".parse().unwrap());
+        Ok(SendResponse::Redirect(header_map))
+      } else {
+        Ok(SendResponse::Success(
+          HeaderMap::new(),
+          "hello".to_string().into_bytes(),
+        ))
+      }
+    }
+  }
+
+  let sys = InMemorySys::default();
+  let file_fetcher = create_file_fetcher(sys.clone(), TestHttpClient);
+  {
+    let result = file_fetcher
+      .ensure_cached_no_follow(
+        &Url::parse("http://localhost/redirect").unwrap(),
+        FetchNoFollowOptions::default(),
+      )
+      .await;
+    assert_eq!(
+      result.unwrap(),
+      CachedOrRedirect::Redirect(Url::parse("http://localhost/home").unwrap())
+    );
+  }
+  {
+    let result = file_fetcher
+      .ensure_cached_no_follow(
+        &Url::parse("http://localhost/other").unwrap(),
+        FetchNoFollowOptions::default(),
+      )
+      .await;
+    assert_eq!(result.unwrap(), CachedOrRedirect::Cached);
+  }
+
+  sys.fs_create_dir_all("/").unwrap();
+  sys.fs_write("/some_path.ts", "text").unwrap();
+  {
+    let result = file_fetcher
+      .ensure_cached_no_follow(
+        &Url::parse("file:///some_path.ts").unwrap(),
+        FetchNoFollowOptions::default(),
+      )
+      .await;
+    assert_eq!(result.unwrap(), CachedOrRedirect::Cached);
+  }
+  {
+    let url = Url::parse("file:///not_exists.ts").unwrap();
+    let result = file_fetcher
+      .ensure_cached_no_follow(&url, FetchNoFollowOptions::default())
+      .await;
+    match result.unwrap_err().as_kind() {
+      FetchNoFollowErrorKind::NotFound(not_found_url) => {
+        assert_eq!(url, *not_found_url)
+      }
+      _ => unreachable!(),
     }
   }
 }
