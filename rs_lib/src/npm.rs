@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
@@ -51,9 +52,10 @@ impl NpmCacheDir {
     }
 
     // this may fail on readonly file systems, so just ignore if so
-    let root_dir = normalize_path(root_dir);
-    let root_dir =
-      try_get_canonicalized_root_dir(sys, &root_dir).unwrap_or(root_dir);
+    let root_dir = normalize_path(Cow::Owned(root_dir));
+    let root_dir = try_get_canonicalized_root_dir(sys, &root_dir)
+      .map(Cow::Owned)
+      .unwrap_or(root_dir);
     let root_dir_url = url_from_directory_path(&root_dir).unwrap();
 
     let known_registries_dirnames: Vec<_> = known_registries_urls
@@ -66,7 +68,7 @@ impl NpmCacheDir {
       .collect();
 
     Self {
-      root_dir,
+      root_dir: root_dir.into_owned(),
       root_dir_url,
       known_registries_dirnames,
     }
