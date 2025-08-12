@@ -98,6 +98,7 @@ impl FileOrRedirect {
         maybe_headers: Some(cache_entry.metadata.headers),
         #[allow(clippy::disallowed_types)] // ok for source
         source: std::sync::Arc::from(cache_entry.content),
+        loaded_from: LoadedFrom::Cache,
       }))
     }
   }
@@ -131,6 +132,21 @@ pub struct File {
   pub maybe_headers: Option<HashMap<String, String>>,
   /// The source of the file.
   pub source: FileSource,
+
+  /// Where the file was loaded from.
+  pub loaded_from: LoadedFrom,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+pub enum LoadedFrom {
+  /// The module was loaded from a remote source.
+  Remote,
+  /// The module was loaded from a local source.
+  Local,
+  /// The module was loaded from a cache for remote sources.
+  Cache,
+  /// The source of the module is unknown.
+  Unknown,
 }
 
 impl File {
@@ -690,6 +706,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
       url: url.clone(),
       mtime: None,
       maybe_headers: Some(headers),
+      loaded_from: LoadedFrom::Local,
       #[allow(clippy::disallowed_types)] // ok for source
       source: std::sync::Arc::from(bytes),
     })
@@ -718,6 +735,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
       url: url.clone(),
       mtime: None,
       maybe_headers: Some(headers),
+      loaded_from: LoadedFrom::Local,
       #[allow(clippy::disallowed_types)] // ok for source
       source: std::sync::Arc::from(blob.bytes),
     })
@@ -824,6 +842,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
           maybe_headers: Some(headers),
           #[allow(clippy::disallowed_types)] // ok for source
           source: std::sync::Arc::from(bytes),
+          loaded_from: LoadedFrom::Remote,
         }))
       }
     }
@@ -1018,6 +1037,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
       url: url.clone(),
       mtime,
       maybe_headers: headers,
+      loaded_from: LoadedFrom::Local,
       source: bytes.into(),
     })
   }
