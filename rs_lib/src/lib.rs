@@ -14,7 +14,6 @@ mod sync;
 /// Permissions used to save a file in the disk caches.
 pub const CACHE_PERM: u32 = 0o644;
 
-pub use cache::url_to_filename;
 pub use cache::CacheEntry;
 pub use cache::CacheReadFileError;
 pub use cache::Checksum;
@@ -25,10 +24,11 @@ pub use cache::HttpCache;
 pub use cache::HttpCacheItemKey;
 pub use cache::HttpCacheRc;
 pub use cache::SerializedCachedUrlMetadata;
+pub use cache::url_to_filename;
 pub use common::HeadersMap;
-pub use deno_dir::resolve_deno_dir;
 pub use deno_dir::DenoDirResolutionError;
 pub use deno_dir::ResolveDenoDirSys;
+pub use deno_dir::resolve_deno_dir;
 pub use global::GlobalHttpCache;
 pub use global::GlobalHttpCacheRc;
 pub use global::GlobalHttpCacheSys;
@@ -46,21 +46,21 @@ pub mod wasm {
   use js_sys::Object;
   use js_sys::Reflect;
   use js_sys::Uint8Array;
+  use sys_traits::EnvVar;
+  use sys_traits::impls::RealSys;
   use sys_traits::impls::wasm_path_to_str;
   use sys_traits::impls::wasm_string_to_path;
-  use sys_traits::impls::RealSys;
-  use sys_traits::EnvVar;
   use url::Url;
   use wasm_bindgen::prelude::*;
 
+  use crate::CacheReadFileError;
+  use crate::Checksum;
+  use crate::HttpCache;
   use crate::cache::CacheEntry;
   use crate::cache::GlobalToLocalCopy;
   use crate::common::HeadersMap;
   use crate::deno_dir;
   use crate::sync::new_rc;
-  use crate::CacheReadFileError;
-  use crate::Checksum;
-  use crate::HttpCache;
 
   #[wasm_bindgen]
   pub fn url_to_filename(url: &str) -> Result<String, JsValue> {

@@ -27,14 +27,14 @@ use thiserror::Error;
 use url::Url;
 
 use self::http_util::CacheSemantics;
-use crate::cache::HttpCacheRc;
-use crate::common::HeadersMap;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
 use crate::CacheEntry;
 use crate::CacheReadFileError;
 use crate::Checksum;
 use crate::ChecksumIntegrityError;
+use crate::cache::HttpCacheRc;
+use crate::common::HeadersMap;
+use crate::sync::MaybeSend;
+use crate::sync::MaybeSync;
 
 mod auth_tokens;
 mod http_util;
@@ -260,7 +260,9 @@ pub struct TooManyRedirectsError(pub Url);
 // before `file_fetcher.rs` APIs are even hit.
 #[derive(Debug, Error, JsError)]
 #[class(type)]
-#[error("Unsupported scheme \"{scheme}\" for module \"{url}\". Supported schemes:\n - \"blob\"\n - \"data\"\n - \"file\"\n - \"http\"\n - \"https\"\n - \"jsr\"\n - \"npm\"")]
+#[error(
+  "Unsupported scheme \"{scheme}\" for module \"{url}\". Supported schemes:\n - \"blob\"\n - \"data\"\n - \"file\"\n - \"http\"\n - \"https\"\n - \"jsr\"\n - \"npm\""
+)]
 pub struct UnsupportedSchemeError {
   pub scheme: String,
   pub url: Url,
@@ -752,12 +754,11 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
   ) -> Result<TStrategy::ReturnValue, FetchNoFollowError> {
     debug!("FileFetcher::fetch_remote_no_follow - specifier: {}", url);
 
-    if self.should_use_cache(url, cache_setting) {
-      if let Some(value) =
+    if self.should_use_cache(url, cache_setting)
+      && let Some(value) =
         strategy.handle_fetch_cached_no_follow(url, maybe_checksum)?
-      {
-        return Ok(value);
-      }
+    {
+      return Ok(value);
     }
 
     if *cache_setting == CacheSetting::Only {

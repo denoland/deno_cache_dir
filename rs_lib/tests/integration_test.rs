@@ -387,9 +387,11 @@ fn test_local_global_cache() {
         .unwrap(),
         content
       );
-      assert!(local_cache_path
-        .join("deno.land/#invalid_1ee01/module2.ts")
-        .exists());
+      assert!(
+        local_cache_path
+          .join("deno.land/#invalid_1ee01/module2.ts")
+          .exists()
+      );
 
       // ensure we can still read this file with a new local cache
       let local_cache = LocalHttpCache::new(
