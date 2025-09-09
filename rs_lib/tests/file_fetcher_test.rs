@@ -21,9 +21,9 @@ use deno_cache_dir::file_fetcher::SendError;
 use deno_cache_dir::file_fetcher::SendResponse;
 use deno_cache_dir::memory::MemoryHttpCache;
 use http::HeaderMap;
-use sys_traits::impls::InMemorySys;
 use sys_traits::FsCreateDirAll;
 use sys_traits::FsWrite;
+use sys_traits::impls::InMemorySys;
 use url::Url;
 
 #[tokio::test]

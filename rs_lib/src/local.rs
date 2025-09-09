@@ -25,21 +25,21 @@ use sys_traits::SystemTimeNow;
 use sys_traits::ThreadSleep;
 use url::Url;
 
+use crate::CACHE_PERM;
+use crate::SerializedCachedUrlMetadata;
 use crate::cache::CacheEntry;
 use crate::cache::CacheReadFileError;
 use crate::cache::GlobalToLocalCopy;
 use crate::global::GlobalHttpCacheRc;
 use crate::sync::MaybeSend;
 use crate::sync::MaybeSync;
-use crate::SerializedCachedUrlMetadata;
-use crate::CACHE_PERM;
 
-use super::common::base_url_to_filename_parts;
-use super::common::checksum;
-use super::common::HeadersMap;
 use super::Checksum;
 use super::HttpCache;
 use super::HttpCacheItemKey;
+use super::common::HeadersMap;
+use super::common::base_url_to_filename_parts;
+use super::common::checksum;
 
 #[sys_traits::auto_impl]
 pub trait LocalHttpCacheSys:
@@ -329,10 +329,10 @@ impl<TSys: LocalHttpCacheSys> LocalHttpCache<TSys> {
     let Some(jsr_url) = &self.jsr_registry_url else {
       return content;
     };
-    if is_jsr_version_metadata_url(url, jsr_url) {
-      if let Some(data) = transform_jsr_version_metadata(&content) {
-        return Cow::Owned(data);
-      }
+    if is_jsr_version_metadata_url(url, jsr_url)
+      && let Some(data) = transform_jsr_version_metadata(&content)
+    {
+      return Cow::Owned(data);
     }
     content
   }
@@ -403,10 +403,9 @@ impl<TSys: LocalHttpCacheSys> HttpCache for LocalHttpCache<TSys> {
       if let Ok(metadata) = self
         .env()
         .fs_metadata(local_path.as_path_from_root(&self.path))
+        && let Ok(modified_time) = metadata.modified()
       {
-        if let Ok(modified_time) = metadata.modified() {
-          return Ok(Some(modified_time));
-        }
+        return Ok(Some(modified_time));
       }
     }
 
@@ -688,7 +687,7 @@ fn url_to_local_sub_path<'a>(
         *last_part = Cow::Owned(last_part.to_string());
         match last_part {
           Cow::Borrowed(_) => unreachable!(),
-          Cow::Owned(ref mut s) => s,
+          Cow::Owned(s) => s,
         }
       }
       Cow::Owned(last_part) => last_part,
@@ -741,19 +740,19 @@ struct LocalCacheManifest<
 }
 
 impl<
-    Sys: FsCreateDirAll
-      + FsMetadata
-      + FsOpen
-      + FsRead
-      + FsRemoveFile
-      + FsRename
-      + ThreadSleep
-      + SystemRandom
-      + MaybeSend
-      + MaybeSync
-      + std::fmt::Debug
-      + Clone,
-  > LocalCacheManifest<Sys>
+  Sys: FsCreateDirAll
+    + FsMetadata
+    + FsOpen
+    + FsRead
+    + FsRemoveFile
+    + FsRename
+    + ThreadSleep
+    + SystemRandom
+    + MaybeSend
+    + MaybeSync
+    + std::fmt::Debug
+    + Clone,
+> LocalCacheManifest<Sys>
 {
   pub fn new(file_path: PathBuf, sys: Sys) -> Self {
     Self::new_internal(file_path, false, sys)
@@ -899,8 +898,8 @@ mod manifest {
   use serde::Serialize;
   use url::Url;
 
-  use super::url_to_local_sub_path;
   use super::LocalCacheSubPath;
+  use super::url_to_local_sub_path;
 
   #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
   pub struct SerializedLocalCacheManifestDataModule {
@@ -1006,10 +1005,10 @@ mod manifest {
     }
 
     pub fn add_directory(&mut self, url: Url, local_path: String) -> bool {
-      if let Some(current) = self.serialized.folders.get(&url) {
-        if *current == local_path {
-          return false;
-        }
+      if let Some(current) = self.serialized.folders.get(&url)
+        && *current == local_path
+      {
+        return false;
       }
 
       if let Some(reverse_mapping) = &mut self.reverse_mapping {
@@ -1072,7 +1071,7 @@ mod test {
 
   use pretty_assertions::assert_eq;
   use sys_traits::impls::RealSys;
-  use tempfile::{tempdir, TempDir};
+  use tempfile::{TempDir, tempdir};
 
   struct TestCaches {
     global_cache: GlobalHttpCacheRc<RealSys>,

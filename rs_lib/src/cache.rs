@@ -10,15 +10,15 @@ use std::time::SystemTime;
 use thiserror::Error;
 use url::Url;
 
+use crate::GlobalHttpCacheRc;
+use crate::LocalHttpCacheRc;
+use crate::common::HeadersMap;
 use crate::common::base_url_to_filename_parts;
 use crate::common::checksum;
-use crate::common::HeadersMap;
 use crate::global::GlobalHttpCacheSys;
 use crate::local::LocalHttpCacheSys;
 use crate::sync::MaybeSend;
 use crate::sync::MaybeSync;
-use crate::GlobalHttpCacheRc;
-use crate::LocalHttpCacheRc;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum GlobalToLocalCopy {

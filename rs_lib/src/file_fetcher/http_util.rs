@@ -87,14 +87,14 @@ impl CacheSemantics {
       };
     }
 
-    if let Some(last_modified) = self.headers.get("last-modified") {
-      if let Ok(last_modified) = DateTime::parse_from_rfc2822(last_modified) {
-        let last_modified = SystemTime::UNIX_EPOCH
-          + Duration::from_secs(last_modified.timestamp().max(0) as _);
-        if let Ok(diff) = server_date.duration_since(last_modified) {
-          let secs_left = diff.as_secs() as f64 * 0.1;
-          return default_min_ttl.max(Duration::from_secs(secs_left as _));
-        }
+    if let Some(last_modified) = self.headers.get("last-modified")
+      && let Ok(last_modified) = DateTime::parse_from_rfc2822(last_modified)
+    {
+      let last_modified = SystemTime::UNIX_EPOCH
+        + Duration::from_secs(last_modified.timestamp().max(0) as _);
+      if let Ok(diff) = server_date.duration_since(last_modified) {
+        let secs_left = diff.as_secs() as f64 * 0.1;
+        return default_min_ttl.max(Duration::from_secs(secs_left as _));
       }
     }
 
@@ -120,16 +120,16 @@ impl CacheSemantics {
       return false;
     }
 
-    if let Some(max_age) = self.cache_control.max_age {
-      if self.age() > max_age {
-        return false;
-      }
+    if let Some(max_age) = self.cache_control.max_age
+      && self.age() > max_age
+    {
+      return false;
     }
 
-    if let Some(min_fresh) = self.cache_control.min_fresh {
-      if self.time_to_live() < min_fresh {
-        return false;
-      }
+    if let Some(min_fresh) = self.cache_control.min_fresh
+      && self.time_to_live() < min_fresh
+    {
+      return false;
     }
 
     if self.is_stale() {

@@ -8,8 +8,8 @@ use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::str::FromStr;
 
-use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use log::debug;
 use log::error;
 use sys_traits::EnvVar;

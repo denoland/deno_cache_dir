@@ -8,8 +8,6 @@ use parking_lot::Mutex;
 use sys_traits::SystemTimeNow;
 use url::Url;
 
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
 use crate::CacheEntry;
 use crate::CacheReadFileError;
 use crate::Checksum;
@@ -17,6 +15,8 @@ use crate::HeadersMap;
 use crate::HttpCache;
 use crate::HttpCacheItemKey;
 use crate::SerializedCachedUrlMetadata;
+use crate::sync::MaybeSend;
+use crate::sync::MaybeSync;
 
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug)]

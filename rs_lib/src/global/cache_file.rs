@@ -15,9 +15,9 @@ use sys_traits::FsRename;
 use sys_traits::SystemRandom;
 use sys_traits::ThreadSleep;
 
-use crate::cache::CacheEntry;
-use crate::SerializedCachedUrlMetadata;
 use crate::CACHE_PERM;
+use crate::SerializedCachedUrlMetadata;
+use crate::cache::CacheEntry;
 
 // File format:
 // <content>\n// denoCacheMetadata=<metadata><EOF>

@@ -10,9 +10,13 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum DenoDirResolutionError {
-  #[error("Could not resolve global Deno cache directory. Please make sure that either the DENO_DIR environment variable is set or the cache directory is available.")]
+  #[error(
+    "Could not resolve global Deno cache directory. Please make sure that either the DENO_DIR environment variable is set or the cache directory is available."
+  )]
   NoCacheOrHomeDir,
-  #[error("Could not resolve global Deno cache directory because the current working directory could not be resolved. Please set the DENO_DIR environment variable and ensure it is pointing at an absolute path.")]
+  #[error(
+    "Could not resolve global Deno cache directory because the current working directory could not be resolved. Please set the DENO_DIR environment variable and ensure it is pointing at an absolute path."
+  )]
   FailedCwd {
     #[source]
     source: std::io::Error,
