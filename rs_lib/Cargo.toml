@@ -4,7 +4,7 @@ version = "0.25.0"
 edition = "2024"
 license = "MIT"
 description = "Cache directory logic used in Deno"
-repository = "https://github.com/denoland/deno_cache"
+repository = "https://github.com/denoland/deno_cache_dir"
 
 [lib]
 crate-type = ["cdylib", "lib"]
