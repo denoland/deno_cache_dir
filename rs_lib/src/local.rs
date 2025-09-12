@@ -598,7 +598,8 @@ fn url_to_local_sub_path<'a>(
   }
 
   fn get_extension(url: &Url, content_type: Option<&str>) -> &'static str {
-    let media_type = MediaType::from_specifier_and_content_type(url, content_type);
+    let media_type =
+      MediaType::from_specifier_and_content_type(url, content_type);
     match media_type {
       MediaType::JavaScript => ".js",
       MediaType::Jsx => ".jsx",
@@ -1211,11 +1212,7 @@ mod test {
       &[],
       "deno.land/x/#test._4ee3d/main.ts",
     );
-    run_test(
-      "https://deno.land/x/mod.wasm",
-      &[],
-      "deno.land/x/mod.wasm",
-    );
+    run_test("https://deno.land/x/mod.wasm", &[], "deno.land/x/mod.wasm");
 
     #[track_caller]
     fn run_test(url: &str, headers: &[(&str, &str)], expected: &str) {
