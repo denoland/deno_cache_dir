@@ -598,8 +598,26 @@ fn url_to_local_sub_path<'a>(
   }
 
   fn get_extension(url: &Url, content_type: Option<&str>) -> &'static str {
-    MediaType::from_specifier_and_content_type(url, content_type)
-      .as_ts_extension()
+    let media_type =
+      MediaType::from_specifier_and_content_type(url, content_type);
+    match media_type {
+      MediaType::JavaScript => ".js",
+      MediaType::Jsx => ".jsx",
+      MediaType::Mjs => ".mjs",
+      MediaType::Cjs => ".cjs",
+      MediaType::TypeScript => ".ts",
+      MediaType::Mts => ".mts",
+      MediaType::Cts => ".cts",
+      MediaType::Dts => ".d.ts",
+      MediaType::Dmts => ".d.mts",
+      MediaType::Dcts => ".d.cts",
+      MediaType::Tsx => ".tsx",
+      MediaType::Css => ".css",
+      MediaType::Json => ".json",
+      MediaType::Wasm => ".wasm",
+      MediaType::SourceMap => ".js",
+      MediaType::Unknown => ".js",
+    }
   }
 
   fn short_hash(data: &str, last_ext: Option<&str>) -> String {
@@ -1194,6 +1212,7 @@ mod test {
       &[],
       "deno.land/x/#test._4ee3d/main.ts",
     );
+    run_test("https://deno.land/x/mod.wasm", &[], "deno.land/x/mod.wasm");
 
     #[track_caller]
     fn run_test(url: &str, headers: &[(&str, &str)], expected: &str) {
