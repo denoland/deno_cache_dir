@@ -25,7 +25,7 @@ cache_control = { version = "0.2.0", optional = true }
 chrono = { version = "0.4", default-features = false, features = ["std"], optional = true }
 data-url = { version = "0.3.0", optional = true }
 deno_error = { version = "0.7.0", features =["url"] }
-deno_media_type = "0.2.2"
+deno_media_type = "0.3.0"
 deno_path_util = "0.6.0"
 sys_traits.workspace = true
 http = { version = "1", optional = true }
