@@ -1,6 +1,6 @@
 [package]
 name = "deno_cache_dir"
-version = "0.26.1"
+version = "0.26.2"
 edition = "2024"
 license = "MIT"
 description = "Cache directory logic used in Deno"
