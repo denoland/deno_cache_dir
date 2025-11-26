@@ -614,8 +614,12 @@ fn url_to_local_sub_path<'a>(
       MediaType::Tsx => ".tsx",
       MediaType::Css => ".css",
       MediaType::Json => ".json",
+      MediaType::Jsonc => ".jsonc",
+      MediaType::Json5 => ".json5",
       MediaType::Wasm => ".wasm",
       MediaType::SourceMap => ".js",
+      MediaType::Html => ".html",
+      MediaType::Sql => ".sql",
       MediaType::Unknown => ".js",
     }
   }
