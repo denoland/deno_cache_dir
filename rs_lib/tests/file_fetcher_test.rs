@@ -35,6 +35,14 @@ async fn test_file_fetcher_redirects() {
   impl HttpClient for TestHttpClient {
     async fn send_no_follow(
       &self,
+      url: &Url,
+      headers: HeaderMap,
+    ) -> Result<SendResponse, SendError> {
+      self.send_no_follow_sync(url, headers)
+    }
+
+    fn send_no_follow_sync(
+      &self,
       _url: &Url,
       _headers: HeaderMap,
     ) -> Result<SendResponse, SendError> {
@@ -91,6 +99,14 @@ async fn test_file_fetcher_ensure_cached() {
   #[async_trait::async_trait(?Send)]
   impl HttpClient for TestHttpClient {
     async fn send_no_follow(
+      &self,
+      url: &Url,
+      headers: HeaderMap,
+    ) -> Result<SendResponse, SendError> {
+      self.send_no_follow_sync(url, headers)
+    }
+
+    fn send_no_follow_sync(
       &self,
       url: &Url,
       _headers: HeaderMap,

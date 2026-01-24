@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
-use std::thread::AccessError;
 use std::time::SystemTime;
 
 use boxed_error::Boxed;
@@ -488,6 +487,12 @@ pub trait BlobStore: std::fmt::Debug + MaybeSend + MaybeSync {
   fn get_sync(&self, url: &Url) -> std::io::Result<Option<BlobData>>;
 }
 
+enum FetchNoFollowResultWithDeferred<TReturn> {
+  Value(TReturn),
+  Blob,
+  Https,
+}
+
 #[derive(Debug, Default)]
 pub struct FetchNoFollowOptions<'a> {
   pub local: FetchLocalOptions,
@@ -603,6 +608,19 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
       .await
   }
 
+  /// Synchronously fetches without following redirects.
+  ///
+  /// You should verify permissions of the specifier before calling this function.
+  pub fn fetch_no_follow_sync(
+    &self,
+    url: &Url,
+    options: FetchNoFollowOptions<'_>,
+  ) -> Result<FileOrRedirect, FetchNoFollowError> {
+    // note: this debug output is used by the tests
+    debug!("FileFetcher::fetch_no_follow_sync - specifier: {}", url);
+    self.fetch_no_follow_with_strategy_sync(&FetchStrategy(self), url, options)
+  }
+
   /// Ensures the data is cached without following redirects.
   ///
   /// You should verify permissions of the specifier before calling this function.
@@ -618,6 +636,26 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
       .await
   }
 
+  /// Synchronously ensures the data is cached without following redirects.
+  ///
+  /// You should verify permissions of the specifier before calling this function.
+  pub fn ensure_cached_no_follow_sync(
+    &self,
+    url: &Url,
+    options: FetchNoFollowOptions<'_>,
+  ) -> Result<CachedOrRedirect, FetchNoFollowError> {
+    // note: this debug output is used by the tests
+    debug!(
+      "FileFetcher::ensure_cached_no_follow_sync - specifier: {}",
+      url
+    );
+    self.fetch_no_follow_with_strategy_sync(
+      &EnsureCachedStrategy(self),
+      url,
+      options,
+    )
+  }
+
   async fn fetch_no_follow_with_strategy<
     TStrategy: FetchOrEnsureCacheStrategy,
   >(
@@ -626,20 +664,79 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
     url: &Url,
     options: FetchNoFollowOptions<'_>,
   ) -> Result<TStrategy::ReturnValue, FetchNoFollowError> {
+    match self
+      .fetch_no_follow_with_strategy_deferred(strategy, url, &options)?
+    {
+      FetchNoFollowResultWithDeferred::Value(value) => Ok(value),
+      FetchNoFollowResultWithDeferred::Blob => {
+        strategy.handle_blob_url(url).await
+      }
+      FetchNoFollowResultWithDeferred::Https => {
+        strategy
+          .handle_fetch_remote_no_follow_no_cache(
+            url,
+            options.maybe_accept,
+            options.maybe_checksum,
+            options.maybe_auth,
+          )
+          .await
+      }
+    }
+  }
+
+  fn fetch_no_follow_with_strategy_sync<
+    TStrategy: FetchOrEnsureCacheStrategy,
+  >(
+    &self,
+    strategy: &TStrategy,
+    url: &Url,
+    options: FetchNoFollowOptions<'_>,
+  ) -> Result<TStrategy::ReturnValue, FetchNoFollowError> {
+    match self
+      .fetch_no_follow_with_strategy_deferred(strategy, url, &options)?
+    {
+      FetchNoFollowResultWithDeferred::Value(value) => Ok(value),
+      FetchNoFollowResultWithDeferred::Blob => {
+        strategy.handle_blob_url_sync(url)
+      }
+      FetchNoFollowResultWithDeferred::Https => strategy
+        .handle_fetch_remote_no_follow_no_cache_sync(
+          url,
+          options.maybe_accept,
+          options.maybe_checksum,
+          options.maybe_auth,
+        ),
+    }
+  }
+
+  fn fetch_no_follow_with_strategy_deferred<
+    TStrategy: FetchOrEnsureCacheStrategy,
+  >(
+    &self,
+    strategy: &TStrategy,
+    url: &Url,
+    options: &FetchNoFollowOptions<'_>,
+  ) -> Result<
+    FetchNoFollowResultWithDeferred<TStrategy::ReturnValue>,
+    FetchNoFollowError,
+  > {
     let scheme = url.scheme();
     if let Some(file) = self.memory_files.get(url) {
-      Ok(strategy.handle_memory_file(file))
+      Ok(FetchNoFollowResultWithDeferred::Value(
+        strategy.handle_memory_file(file),
+      ))
     } else if scheme == "file" {
       match strategy.handle_local(url, &options.local)? {
-        Some(file) => Ok(file),
+        Some(file) => Ok(FetchNoFollowResultWithDeferred::Value(file)),
         None => Err(FetchNoFollowErrorKind::NotFound(url.clone()).into_box()),
       }
     } else if scheme == "data" {
       strategy
         .handle_data_url(url)
+        .map(FetchNoFollowResultWithDeferred::Value)
         .map_err(|e| FetchNoFollowErrorKind::DataUrlDecode(e).into_box())
     } else if scheme == "blob" {
-      strategy.handle_blob_url(url).await
+      Ok(FetchNoFollowResultWithDeferred::Blob)
     } else if scheme == "https" || scheme == "http" {
       if !self.allow_remote {
         Err(FetchNoFollowErrorKind::NoRemote(url.clone()).into_box())
@@ -651,7 +748,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
           && let Some(value) = strategy
             .handle_fetch_cached_no_follow(url, options.maybe_checksum)?
         {
-          return Ok(value);
+          return Ok(FetchNoFollowResultWithDeferred::Value(value));
         }
 
         if *cache_setting == CacheSetting::Only {
@@ -660,14 +757,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
           );
         }
 
-        strategy
-          .handle_fetch_remote_no_follow_no_cache(
-            url,
-            options.maybe_accept,
-            options.maybe_checksum,
-            options.maybe_auth,
-          )
-          .await
+        Ok(FetchNoFollowResultWithDeferred::Https)
       }
     } else {
       Err(
@@ -787,25 +877,6 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
       #[allow(clippy::disallowed_types)] // ok for source
       source: std::sync::Arc::from(blob.bytes),
     })
-  }
-
-  async fn fetch_remote_no_follow<TStrategy: FetchOrEnsureCacheStrategy>(
-    &self,
-    strategy: &TStrategy,
-    url: &Url,
-    maybe_accept: Option<Cow<'static, str>>,
-    cache_setting: &CacheSetting,
-    maybe_checksum: Option<Checksum<'_>>,
-    maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
-  ) -> Result<TStrategy::ReturnValue, FetchNoFollowError> {
-    strategy
-      .handle_fetch_remote_no_follow_no_cache(
-        url,
-        maybe_accept,
-        maybe_checksum,
-        maybe_auth,
-      )
-      .await
   }
 
   async fn fetch_remote_no_follow_no_cache(
@@ -1009,7 +1080,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
     maybe_accept: Option<Cow<'static, str>>,
     maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
     maybe_etag: Option<String>,
-  ) -> Result<HeaderMap, FetchNoFollowErrorKind> {
+  ) -> Result<HeaderMap, FetchNoFollowError> {
     let maybe_auth_token = self.auth_tokens.get(url);
     let capacity = [
       maybe_etag.is_some(),
