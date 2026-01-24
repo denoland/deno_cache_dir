@@ -886,18 +886,14 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
     maybe_checksum: Option<Checksum<'_>>,
     maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
   ) -> Result<FileOrRedirect, FetchNoFollowError> {
-    let (maybe_etag_cache_entry, maybe_etag) =
-      self.get_etag_entry(url, maybe_checksum).unzip();
-    let headers =
-      self.build_headers(url, maybe_accept, maybe_auth, maybe_etag)?;
-    let result = self.http_client.send_no_follow(url, headers).await;
-    let response = self.handle_send_result(url, result)?;
-    self.handle_fetch_remote_response(
+    let (headers, maybe_etag_cache_entry) = self.build_headers_and_etag(
       url,
-      response,
+      maybe_accept,
       maybe_checksum,
-      maybe_etag_cache_entry,
-    )
+      maybe_auth,
+    )?;
+    let result = self.http_client.send_no_follow(url, headers).await;
+    self.handle_send_result(url, result, maybe_checksum, maybe_etag_cache_entry)
   }
 
   fn fetch_remote_no_follow_no_cache_sync(
@@ -907,18 +903,14 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
     maybe_checksum: Option<Checksum<'_>>,
     maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
   ) -> Result<FileOrRedirect, FetchNoFollowError> {
-    let (maybe_etag_cache_entry, maybe_etag) =
-      self.get_etag_entry(url, maybe_checksum).unzip();
-    let headers =
-      self.build_headers(url, maybe_accept, maybe_auth, maybe_etag)?;
-    let result = self.http_client.send_no_follow_sync(url, headers);
-    let response = self.handle_send_result(url, result)?;
-    self.handle_fetch_remote_response(
+    let (headers, maybe_etag_cache_entry) = self.build_headers_and_etag(
       url,
-      response,
+      maybe_accept,
       maybe_checksum,
-      maybe_etag_cache_entry,
-    )
+      maybe_auth,
+    )?;
+    let result = self.http_client.send_no_follow_sync(url, headers);
+    self.handle_send_result(url, result, maybe_checksum, maybe_etag_cache_entry)
   }
 
   fn get_etag_entry(
@@ -944,24 +936,53 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
     &self,
     url: &Url,
     send_result: Result<SendResponse, SendError>,
-  ) -> Result<SendRequestResponse, FetchNoFollowError> {
+    maybe_checksum: Option<Checksum<'_>>,
+    maybe_etag_cache_entry: Option<CacheEntry>,
+  ) -> Result<FileOrRedirect, FetchNoFollowError> {
     match send_result {
       Ok(resp) => match resp {
-        SendResponse::NotModified => Ok(SendRequestResponse::NotModified),
+        SendResponse::NotModified => {
+          let cache_entry = maybe_etag_cache_entry.unwrap();
+          FileOrRedirect::from_deno_cache_entry(url, cache_entry).map_err(
+            |err| FetchNoFollowErrorKind::RedirectResolution(err).into_box(),
+          )
+        }
         SendResponse::Redirect(headers) => {
-          let new_url =
-            resolve_redirect_from_headers(url, &headers).map_err(|err| {
+          let redirect_url = resolve_redirect_from_headers(url, &headers)
+            .map_err(|err| {
               FetchNoFollowErrorKind::RedirectHeaderParse(*err).into_box()
             })?;
-          Ok(SendRequestResponse::Redirect(
-            new_url,
-            response_headers_to_headers_map(headers),
-          ))
+          let headers = response_headers_to_headers_map(headers);
+          self.http_cache.set(url, headers, &[]).map_err(|source| {
+            FetchNoFollowErrorKind::CacheSave {
+              url: url.clone(),
+              source,
+            }
+          })?;
+          Ok(FileOrRedirect::Redirect(redirect_url))
         }
-        SendResponse::Success(headers, body) => Ok(SendRequestResponse::Code(
-          body,
-          response_headers_to_headers_map(headers),
-        )),
+        SendResponse::Success(headers, body) => {
+          let headers = response_headers_to_headers_map(headers);
+          self.http_cache.set(url, headers.clone(), &body).map_err(
+            |source| FetchNoFollowErrorKind::CacheSave {
+              url: url.clone(),
+              source,
+            },
+          )?;
+          if let Some(checksum) = maybe_checksum {
+            checksum
+              .check(url, &body)
+              .map_err(|err| FetchNoFollowErrorKind::ChecksumIntegrity(*err))?;
+          }
+          Ok(FileOrRedirect::File(File {
+            url: url.clone(),
+            mtime: None,
+            maybe_headers: Some(headers),
+            #[allow(clippy::disallowed_types)] // ok for source
+            source: std::sync::Arc::from(body),
+            loaded_from: LoadedFrom::Remote,
+          }))
+        }
       },
       Err(err) => match err {
         SendError::Failed(err) => Err(
@@ -982,53 +1003,6 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
           .into_box(),
         ),
       },
-    }
-  }
-
-  fn handle_fetch_remote_response(
-    &self,
-    url: &Url,
-    response: SendRequestResponse,
-    maybe_checksum: Option<Checksum<'_>>,
-    maybe_etag_cache_entry: Option<CacheEntry>,
-  ) -> Result<FileOrRedirect, FetchNoFollowError> {
-    match response {
-      SendRequestResponse::NotModified => {
-        let cache_entry = maybe_etag_cache_entry.unwrap();
-        FileOrRedirect::from_deno_cache_entry(url, cache_entry).map_err(|err| {
-          FetchNoFollowErrorKind::RedirectResolution(err).into_box()
-        })
-      }
-      SendRequestResponse::Redirect(redirect_url, headers) => {
-        self.http_cache.set(url, headers, &[]).map_err(|source| {
-          FetchNoFollowErrorKind::CacheSave {
-            url: url.clone(),
-            source,
-          }
-        })?;
-        Ok(FileOrRedirect::Redirect(redirect_url))
-      }
-      SendRequestResponse::Code(bytes, headers) => {
-        self.http_cache.set(url, headers.clone(), &bytes).map_err(
-          |source| FetchNoFollowErrorKind::CacheSave {
-            url: url.clone(),
-            source,
-          },
-        )?;
-        if let Some(checksum) = maybe_checksum {
-          checksum
-            .check(url, &bytes)
-            .map_err(|err| FetchNoFollowErrorKind::ChecksumIntegrity(*err))?;
-        }
-        Ok(FileOrRedirect::File(File {
-          url: url.clone(),
-          mtime: None,
-          maybe_headers: Some(headers),
-          #[allow(clippy::disallowed_types)] // ok for source
-          source: std::sync::Arc::from(bytes),
-          loaded_from: LoadedFrom::Remote,
-        }))
-      }
     }
   }
 
@@ -1072,6 +1046,20 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
         true
       }
     }
+  }
+
+  fn build_headers_and_etag(
+    &self,
+    url: &Url,
+    maybe_accept: Option<Cow<'static, str>>,
+    maybe_checksum: Option<Checksum<'_>>,
+    maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
+  ) -> Result<(HeaderMap, Option<CacheEntry>), FetchNoFollowError> {
+    let (maybe_etag_cache_entry, maybe_etag) =
+      self.get_etag_entry(url, maybe_checksum).unzip();
+    let headers =
+      self.build_headers(url, maybe_accept, maybe_auth, maybe_etag)?;
+    Ok((headers, maybe_etag_cache_entry))
   }
 
   fn build_headers(
@@ -1518,13 +1506,6 @@ fn resolve_url_from_location(
     let new_path = format!("{}/{}", segs.last().unwrap_or(&""), location);
     Ok(base_url.join(&new_path)?)
   }
-}
-
-#[derive(Debug, Eq, PartialEq)]
-enum SendRequestResponse {
-  Code(Vec<u8>, HeadersMap),
-  NotModified,
-  Redirect(Url, HeadersMap),
 }
 
 #[cfg(test)]

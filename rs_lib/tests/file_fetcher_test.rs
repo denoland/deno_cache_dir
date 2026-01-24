@@ -308,8 +308,8 @@ fn test_file_fetcher_ensure_cached_no_follow_sync() {
   // test not found
   {
     let url = Url::parse("file:///not_exists.ts").unwrap();
-    let result =
-      file_fetcher.ensure_cached_no_follow_sync(&url, FetchNoFollowOptions::default());
+    let result = file_fetcher
+      .ensure_cached_no_follow_sync(&url, FetchNoFollowOptions::default());
     match result.unwrap_err().as_kind() {
       FetchNoFollowErrorKind::NotFound(not_found_url) => {
         assert_eq!(url, *not_found_url)
