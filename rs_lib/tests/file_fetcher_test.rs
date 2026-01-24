@@ -173,6 +173,152 @@ async fn test_file_fetcher_ensure_cached() {
   }
 }
 
+#[test]
+fn test_file_fetcher_fetch_no_follow_sync() {
+  #[derive(Debug)]
+  struct TestHttpClient;
+
+  #[async_trait::async_trait(?Send)]
+  impl HttpClient for TestHttpClient {
+    async fn send_no_follow(
+      &self,
+      url: &Url,
+      headers: HeaderMap,
+    ) -> Result<SendResponse, SendError> {
+      self.send_no_follow_sync(url, headers)
+    }
+
+    fn send_no_follow_sync(
+      &self,
+      _url: &Url,
+      _headers: HeaderMap,
+    ) -> Result<SendResponse, SendError> {
+      Ok(SendResponse::Redirect(HeaderMap::new()))
+    }
+  }
+
+  let sys = InMemorySys::default();
+  let file_fetcher = create_file_fetcher(sys.clone(), TestHttpClient);
+
+  // test bad redirect
+  let result = file_fetcher.fetch_no_follow_sync(
+    &Url::parse("http://localhost/bad_redirect").unwrap(),
+    FetchNoFollowOptions::default(),
+  );
+
+  match result.unwrap_err().into_kind() {
+    FetchNoFollowErrorKind::RedirectHeaderParse(err) => {
+      assert_eq!(err.request_url.as_str(), "http://localhost/bad_redirect");
+    }
+    err => unreachable!("{:?}", err),
+  }
+
+  // test local file
+  let time = SystemTime::now();
+  sys.set_time(Some(time));
+  sys.fs_create_dir_all("/").unwrap();
+  sys.fs_write("/some_path.ts", "text").unwrap();
+
+  for include_mtime in [true, false] {
+    let result = file_fetcher.fetch_no_follow_sync(
+      &Url::parse("file:///some_path.ts").unwrap(),
+      FetchNoFollowOptions {
+        local: FetchLocalOptions { include_mtime },
+        ..Default::default()
+      },
+    );
+    match result.unwrap() {
+      FileOrRedirect::File(file) => {
+        assert_eq!(file.mtime, if include_mtime { Some(time) } else { None });
+        assert_eq!(file.source.to_vec(), b"text");
+      }
+      FileOrRedirect::Redirect(_) => unreachable!(),
+    }
+  }
+}
+
+#[test]
+fn test_file_fetcher_ensure_cached_no_follow_sync() {
+  #[derive(Debug)]
+  struct TestHttpClient;
+
+  #[async_trait::async_trait(?Send)]
+  impl HttpClient for TestHttpClient {
+    async fn send_no_follow(
+      &self,
+      url: &Url,
+      headers: HeaderMap,
+    ) -> Result<SendResponse, SendError> {
+      self.send_no_follow_sync(url, headers)
+    }
+
+    fn send_no_follow_sync(
+      &self,
+      url: &Url,
+      _headers: HeaderMap,
+    ) -> Result<SendResponse, SendError> {
+      if url.path() == "/redirect" {
+        let mut header_map = HeaderMap::new();
+        header_map.insert(http::header::LOCATION, "/home".parse().unwrap());
+        Ok(SendResponse::Redirect(header_map))
+      } else {
+        Ok(SendResponse::Success(
+          HeaderMap::new(),
+          "hello".to_string().into_bytes(),
+        ))
+      }
+    }
+  }
+
+  let sys = InMemorySys::default();
+  let file_fetcher = create_file_fetcher(sys.clone(), TestHttpClient);
+
+  // test redirect
+  {
+    let result = file_fetcher.ensure_cached_no_follow_sync(
+      &Url::parse("http://localhost/redirect").unwrap(),
+      FetchNoFollowOptions::default(),
+    );
+    assert_eq!(
+      result.unwrap(),
+      CachedOrRedirect::Redirect(Url::parse("http://localhost/home").unwrap())
+    );
+  }
+
+  // test success
+  {
+    let result = file_fetcher.ensure_cached_no_follow_sync(
+      &Url::parse("http://localhost/other").unwrap(),
+      FetchNoFollowOptions::default(),
+    );
+    assert_eq!(result.unwrap(), CachedOrRedirect::Cached);
+  }
+
+  // test local file
+  sys.fs_create_dir_all("/").unwrap();
+  sys.fs_write("/some_path.ts", "text").unwrap();
+  {
+    let result = file_fetcher.ensure_cached_no_follow_sync(
+      &Url::parse("file:///some_path.ts").unwrap(),
+      FetchNoFollowOptions::default(),
+    );
+    assert_eq!(result.unwrap(), CachedOrRedirect::Cached);
+  }
+
+  // test not found
+  {
+    let url = Url::parse("file:///not_exists.ts").unwrap();
+    let result =
+      file_fetcher.ensure_cached_no_follow_sync(&url, FetchNoFollowOptions::default());
+    match result.unwrap_err().as_kind() {
+      FetchNoFollowErrorKind::NotFound(not_found_url) => {
+        assert_eq!(url, *not_found_url)
+      }
+      _ => unreachable!(),
+    }
+  }
+}
+
 fn create_file_fetcher<TClient: HttpClient>(
   sys: InMemorySys,
   client: TClient,
