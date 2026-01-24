@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
+use std::thread::AccessError;
 use std::time::SystemTime;
 
 use boxed_error::Boxed;
@@ -446,6 +447,18 @@ pub trait HttpClient: std::fmt::Debug + MaybeSend + MaybeSync {
     url: &Url,
     headers: HeaderMap,
   ) -> Result<SendResponse, SendError>;
+
+  /// Send a request getting the response synchronously.
+  ///
+  /// The implementation MUST not follow redirects. Return `SendResponse::Redirect`
+  /// in that case.
+  ///
+  /// The implementation may retry the request on failure.
+  fn send_no_follow_sync(
+    &self,
+    url: &Url,
+    headers: HeaderMap,
+  ) -> Result<SendResponse, SendError>;
 }
 
 #[derive(Debug, Clone)]
@@ -462,11 +475,17 @@ impl BlobStore for NullBlobStore {
   async fn get(&self, _url: &Url) -> std::io::Result<Option<BlobData>> {
     Ok(None)
   }
+
+  fn get_sync(&self, _url: &Url) -> std::io::Result<Option<BlobData>> {
+    Ok(None)
+  }
 }
 
 #[async_trait::async_trait(?Send)]
 pub trait BlobStore: std::fmt::Debug + MaybeSend + MaybeSync {
   async fn get(&self, url: &Url) -> std::io::Result<Option<BlobData>>;
+  /// Synchronous get when requiring ESM.
+  fn get_sync(&self, url: &Url) -> std::io::Result<Option<BlobData>>;
 }
 
 #[derive(Debug, Default)]
@@ -474,7 +493,7 @@ pub struct FetchNoFollowOptions<'a> {
   pub local: FetchLocalOptions,
   pub maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
   pub maybe_checksum: Option<Checksum<'a>>,
-  pub maybe_accept: Option<&'a str>,
+  pub maybe_accept: Option<Cow<'static, str>>,
   pub maybe_cache_setting: Option<&'a CacheSetting>,
 }
 
@@ -625,12 +644,26 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
       if !self.allow_remote {
         Err(FetchNoFollowErrorKind::NoRemote(url.clone()).into_box())
       } else {
-        self
-          .fetch_remote_no_follow(
-            strategy,
+        let cache_setting =
+          options.maybe_cache_setting.unwrap_or(&self.cache_setting);
+
+        if self.should_use_cache(url, cache_setting)
+          && let Some(value) = strategy
+            .handle_fetch_cached_no_follow(url, options.maybe_checksum)?
+        {
+          return Ok(value);
+        }
+
+        if *cache_setting == CacheSetting::Only {
+          return Err(
+            FetchNoFollowErrorKind::NotCached { url: url.clone() }.into_box(),
+          );
+        }
+
+        strategy
+          .handle_fetch_remote_no_follow_no_cache(
             url,
             options.maybe_accept,
-            options.maybe_cache_setting.unwrap_or(&self.cache_setting),
             options.maybe_checksum,
             options.maybe_auth,
           )
@@ -720,10 +753,23 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
     url: &Url,
   ) -> Result<File, FetchNoFollowError> {
     debug!("FileFetcher::fetch_blob_url() - specifier: {}", url);
-    let blob = self
-      .blob_store
-      .get(url)
-      .await
+    let result = self.blob_store.get(url).await;
+    self.handle_fetch_blob_url_result(url, result)
+  }
+
+  /// Get a blob URL.
+  fn fetch_blob_url_sync(&self, url: &Url) -> Result<File, FetchNoFollowError> {
+    debug!("FileFetcher::fetch_blob_url_sync() - specifier: {}", url);
+    let result = self.blob_store.get_sync(url);
+    self.handle_fetch_blob_url_result(url, result)
+  }
+
+  fn handle_fetch_blob_url_result(
+    &self,
+    url: &Url,
+    result: std::io::Result<Option<BlobData>>,
+  ) -> Result<File, FetchNoFollowError> {
+    let blob = result
       .map_err(|err| FetchNoFollowErrorKind::ReadingBlobUrl {
         url: url.clone(),
         source: err,
@@ -747,26 +793,11 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
     &self,
     strategy: &TStrategy,
     url: &Url,
-    maybe_accept: Option<&str>,
+    maybe_accept: Option<Cow<'static, str>>,
     cache_setting: &CacheSetting,
     maybe_checksum: Option<Checksum<'_>>,
     maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
   ) -> Result<TStrategy::ReturnValue, FetchNoFollowError> {
-    debug!("FileFetcher::fetch_remote_no_follow - specifier: {}", url);
-
-    if self.should_use_cache(url, cache_setting)
-      && let Some(value) =
-        strategy.handle_fetch_cached_no_follow(url, maybe_checksum)?
-    {
-      return Ok(value);
-    }
-
-    if *cache_setting == CacheSetting::Only {
-      return Err(
-        FetchNoFollowErrorKind::NotCached { url: url.clone() }.into_box(),
-      );
-    }
-
     strategy
       .handle_fetch_remote_no_follow_no_cache(
         url,
@@ -780,11 +811,51 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
   async fn fetch_remote_no_follow_no_cache(
     &self,
     url: &Url,
-    maybe_accept: Option<&str>,
+    maybe_accept: Option<Cow<'static, str>>,
     maybe_checksum: Option<Checksum<'_>>,
     maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
   ) -> Result<FileOrRedirect, FetchNoFollowError> {
-    let maybe_etag_cache_entry = self
+    let (maybe_etag_cache_entry, maybe_etag) =
+      self.get_etag_entry(url, maybe_checksum).unzip();
+    let headers =
+      self.build_headers(url, maybe_accept, maybe_auth, maybe_etag)?;
+    let result = self.http_client.send_no_follow(url, headers).await;
+    let response = self.handle_send_result(url, result)?;
+    self.handle_fetch_remote_response(
+      url,
+      response,
+      maybe_checksum,
+      maybe_etag_cache_entry,
+    )
+  }
+
+  fn fetch_remote_no_follow_no_cache_sync(
+    &self,
+    url: &Url,
+    maybe_accept: Option<Cow<'static, str>>,
+    maybe_checksum: Option<Checksum<'_>>,
+    maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
+  ) -> Result<FileOrRedirect, FetchNoFollowError> {
+    let (maybe_etag_cache_entry, maybe_etag) =
+      self.get_etag_entry(url, maybe_checksum).unzip();
+    let headers =
+      self.build_headers(url, maybe_accept, maybe_auth, maybe_etag)?;
+    let result = self.http_client.send_no_follow_sync(url, headers);
+    let response = self.handle_send_result(url, result)?;
+    self.handle_fetch_remote_response(
+      url,
+      response,
+      maybe_checksum,
+      maybe_etag_cache_entry,
+    )
+  }
+
+  fn get_etag_entry(
+    &self,
+    url: &Url,
+    maybe_checksum: Option<Checksum<'_>>,
+  ) -> Option<(CacheEntry, String)> {
+    self
       .http_cache
       .cache_item_key(url)
       .ok()
@@ -795,23 +866,64 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
           .headers
           .remove("etag")
           .map(|etag| (cache_entry, etag))
-      });
-
-    let maybe_auth_token = self.auth_tokens.get(url);
-    match self
-      .send_request(SendRequestArgs {
-        url,
-        maybe_accept,
-        maybe_auth: maybe_auth.clone(),
-        maybe_auth_token,
-        maybe_etag: maybe_etag_cache_entry
-          .as_ref()
-          .map(|(_, etag)| etag.as_str()),
       })
-      .await?
-    {
+  }
+
+  fn handle_send_result(
+    &self,
+    url: &Url,
+    send_result: Result<SendResponse, SendError>,
+  ) -> Result<SendRequestResponse, FetchNoFollowError> {
+    match send_result {
+      Ok(resp) => match resp {
+        SendResponse::NotModified => Ok(SendRequestResponse::NotModified),
+        SendResponse::Redirect(headers) => {
+          let new_url =
+            resolve_redirect_from_headers(url, &headers).map_err(|err| {
+              FetchNoFollowErrorKind::RedirectHeaderParse(*err).into_box()
+            })?;
+          Ok(SendRequestResponse::Redirect(
+            new_url,
+            response_headers_to_headers_map(headers),
+          ))
+        }
+        SendResponse::Success(headers, body) => Ok(SendRequestResponse::Code(
+          body,
+          response_headers_to_headers_map(headers),
+        )),
+      },
+      Err(err) => match err {
+        SendError::Failed(err) => Err(
+          FetchNoFollowErrorKind::FetchingRemote {
+            url: url.clone(),
+            source: err,
+          }
+          .into_box(),
+        ),
+        SendError::NotFound => {
+          Err(FetchNoFollowErrorKind::NotFound(url.clone()).into_box())
+        }
+        SendError::StatusCode(status_code) => Err(
+          FetchNoFollowErrorKind::ClientError {
+            url: url.clone(),
+            status_code,
+          }
+          .into_box(),
+        ),
+      },
+    }
+  }
+
+  fn handle_fetch_remote_response(
+    &self,
+    url: &Url,
+    response: SendRequestResponse,
+    maybe_checksum: Option<Checksum<'_>>,
+    maybe_etag_cache_entry: Option<CacheEntry>,
+  ) -> Result<FileOrRedirect, FetchNoFollowError> {
+    match response {
       SendRequestResponse::NotModified => {
-        let (cache_entry, _) = maybe_etag_cache_entry.unwrap();
+        let cache_entry = maybe_etag_cache_entry.unwrap();
         FileOrRedirect::from_deno_cache_entry(url, cache_entry).map_err(|err| {
           FetchNoFollowErrorKind::RedirectResolution(err).into_box()
         })
@@ -832,7 +944,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
             source,
           },
         )?;
-        if let Some(checksum) = &maybe_checksum {
+        if let Some(checksum) = maybe_checksum {
           checksum
             .check(url, &bytes)
             .map_err(|err| FetchNoFollowErrorKind::ChecksumIntegrity(*err))?;
@@ -891,84 +1003,59 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
     }
   }
 
-  /// Asynchronously fetches the given HTTP URL one pass only.
-  /// If no redirect is present and no error occurs,
-  /// yields Code(ResultPayload).
-  /// If redirect occurs, does not follow and
-  /// yields Redirect(url).
-  async fn send_request(
+  fn build_headers(
     &self,
-    args: SendRequestArgs<'_>,
-  ) -> Result<SendRequestResponse, FetchNoFollowError> {
-    let mut headers = HeaderMap::with_capacity(3);
+    url: &Url,
+    maybe_accept: Option<Cow<'static, str>>,
+    maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
+    maybe_etag: Option<String>,
+  ) -> Result<HeaderMap, FetchNoFollowErrorKind> {
+    let maybe_auth_token = self.auth_tokens.get(url);
+    let capacity = [
+      maybe_etag.is_some(),
+      maybe_auth.is_some() || maybe_auth_token.is_some(),
+      maybe_accept.is_some(),
+    ]
+    .into_iter()
+    .filter(|v| *v)
+    .count();
+    let mut headers = HeaderMap::with_capacity(capacity);
 
-    if let Some(etag) = args.maybe_etag {
-      let if_none_match_val =
-        HeaderValue::from_str(etag).map_err(|source| {
-          FetchNoFollowErrorKind::InvalidHeader {
-            name: "etag",
-            source,
-          }
-        })?;
-      headers.insert(IF_NONE_MATCH, if_none_match_val);
-    }
-    if let Some(auth_token) = args.maybe_auth_token {
-      let authorization_val = HeaderValue::from_str(&auth_token.to_string())
-        .map_err(|source| FetchNoFollowErrorKind::InvalidHeader {
-          name: "authorization",
-          source,
-        })?;
-      headers.insert(AUTHORIZATION, authorization_val);
-    } else if let Some((header, value)) = args.maybe_auth {
-      headers.insert(header, value);
-    }
-    if let Some(accept) = args.maybe_accept {
-      let accepts_val = HeaderValue::from_str(accept).map_err(|source| {
+    if let Some(etag) = maybe_etag {
+      let if_none_match_val = etag.try_into().map_err(|source| {
         FetchNoFollowErrorKind::InvalidHeader {
-          name: "accept",
+          name: "etag",
           source,
         }
       })?;
+      headers.insert(IF_NONE_MATCH, if_none_match_val);
+    }
+    if let Some(auth_token) = maybe_auth_token {
+      let authorization_val =
+        auth_token.to_string().try_into().map_err(|source| {
+          FetchNoFollowErrorKind::InvalidHeader {
+            name: "authorization",
+            source,
+          }
+        })?;
+      headers.insert(AUTHORIZATION, authorization_val);
+    } else if let Some((header, value)) = maybe_auth {
+      headers.insert(header, value);
+    }
+    if let Some(accept) = maybe_accept {
+      let result = match accept {
+        Cow::Borrowed(accept) => accept.try_into(),
+        Cow::Owned(accept) => accept.try_into(),
+      };
+      let accepts_val =
+        result.map_err(|source| FetchNoFollowErrorKind::InvalidHeader {
+          name: "accept",
+          source,
+        })?;
       headers.insert(ACCEPT, accepts_val);
     }
-    match self.http_client.send_no_follow(args.url, headers).await {
-      Ok(resp) => match resp {
-        SendResponse::NotModified => Ok(SendRequestResponse::NotModified),
-        SendResponse::Redirect(headers) => {
-          let new_url = resolve_redirect_from_headers(args.url, &headers)
-            .map_err(|err| {
-              FetchNoFollowErrorKind::RedirectHeaderParse(*err).into_box()
-            })?;
-          Ok(SendRequestResponse::Redirect(
-            new_url,
-            response_headers_to_headers_map(headers),
-          ))
-        }
-        SendResponse::Success(headers, body) => Ok(SendRequestResponse::Code(
-          body,
-          response_headers_to_headers_map(headers),
-        )),
-      },
-      Err(err) => match err {
-        SendError::Failed(err) => Err(
-          FetchNoFollowErrorKind::FetchingRemote {
-            url: args.url.clone(),
-            source: err,
-          }
-          .into_box(),
-        ),
-        SendError::NotFound => {
-          Err(FetchNoFollowErrorKind::NotFound(args.url.clone()).into_box())
-        }
-        SendError::StatusCode(status_code) => Err(
-          FetchNoFollowErrorKind::ClientError {
-            url: args.url.clone(),
-            status_code,
-          }
-          .into_box(),
-        ),
-      },
-    }
+    debug_assert_eq!(headers.capacity(), capacity);
+    Ok(headers)
   }
 
   /// Fetch a source file from the local file system.
@@ -1066,6 +1153,11 @@ trait FetchOrEnsureCacheStrategy {
     url: &Url,
   ) -> Result<Self::ReturnValue, FetchNoFollowError>;
 
+  fn handle_blob_url_sync(
+    &self,
+    url: &Url,
+  ) -> Result<Self::ReturnValue, FetchNoFollowError>;
+
   fn handle_fetch_cached_no_follow(
     &self,
     url: &Url,
@@ -1075,7 +1167,15 @@ trait FetchOrEnsureCacheStrategy {
   async fn handle_fetch_remote_no_follow_no_cache(
     &self,
     url: &Url,
-    maybe_accept: Option<&str>,
+    maybe_accept: Option<Cow<'static, str>>,
+    maybe_checksum: Option<Checksum<'_>>,
+    maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
+  ) -> Result<Self::ReturnValue, FetchNoFollowError>;
+
+  fn handle_fetch_remote_no_follow_no_cache_sync(
+    &self,
+    url: &Url,
+    maybe_accept: Option<Cow<'static, str>>,
     maybe_checksum: Option<Checksum<'_>>,
     maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
   ) -> Result<Self::ReturnValue, FetchNoFollowError>;
@@ -1124,6 +1224,13 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
     self.0.fetch_blob_url(url).await.map(FileOrRedirect::File)
   }
 
+  fn handle_blob_url_sync(
+    &self,
+    url: &Url,
+  ) -> Result<Self::ReturnValue, FetchNoFollowError> {
+    self.0.fetch_blob_url_sync(url).map(FileOrRedirect::File)
+  }
+
   fn handle_fetch_cached_no_follow(
     &self,
     url: &Url,
@@ -1135,7 +1242,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
   async fn handle_fetch_remote_no_follow_no_cache(
     &self,
     url: &Url,
-    maybe_accept: Option<&str>,
+    maybe_accept: Option<Cow<'static, str>>,
     maybe_checksum: Option<Checksum<'_>>,
     maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
   ) -> Result<FileOrRedirect, FetchNoFollowError> {
@@ -1148,6 +1255,21 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
         maybe_auth,
       )
       .await
+  }
+
+  fn handle_fetch_remote_no_follow_no_cache_sync(
+    &self,
+    url: &Url,
+    maybe_accept: Option<Cow<'static, str>>,
+    maybe_checksum: Option<Checksum<'_>>,
+    maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
+  ) -> Result<FileOrRedirect, FetchNoFollowError> {
+    self.0.fetch_remote_no_follow_no_cache_sync(
+      url,
+      maybe_accept,
+      maybe_checksum,
+      maybe_auth,
+    )
   }
 }
 
@@ -1193,6 +1315,13 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
     Ok(CachedOrRedirect::Cached)
   }
 
+  fn handle_blob_url_sync(
+    &self,
+    _url: &Url,
+  ) -> Result<CachedOrRedirect, FetchNoFollowError> {
+    Ok(CachedOrRedirect::Cached)
+  }
+
   fn handle_fetch_cached_no_follow(
     &self,
     url: &Url,
@@ -1212,7 +1341,7 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
   async fn handle_fetch_remote_no_follow_no_cache(
     &self,
     url: &Url,
-    maybe_accept: Option<&str>,
+    maybe_accept: Option<Cow<'static, str>>,
     maybe_checksum: Option<Checksum<'_>>,
     maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
   ) -> Result<CachedOrRedirect, FetchNoFollowError> {
@@ -1225,6 +1354,24 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
         maybe_auth,
       )
       .await
+      .map(|file_or_redirect| file_or_redirect.into())
+  }
+
+  fn handle_fetch_remote_no_follow_no_cache_sync(
+    &self,
+    url: &Url,
+    maybe_accept: Option<Cow<'static, str>>,
+    maybe_checksum: Option<Checksum<'_>>,
+    maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
+  ) -> Result<CachedOrRedirect, FetchNoFollowError> {
+    self
+      .0
+      .fetch_remote_no_follow_no_cache_sync(
+        url,
+        maybe_accept,
+        maybe_checksum,
+        maybe_auth,
+      )
       .map(|file_or_redirect| file_or_redirect.into())
   }
 }
@@ -1300,15 +1447,6 @@ fn resolve_url_from_location(
     let new_path = format!("{}/{}", segs.last().unwrap_or(&""), location);
     Ok(base_url.join(&new_path)?)
   }
-}
-
-#[derive(Debug)]
-struct SendRequestArgs<'a> {
-  pub url: &'a Url,
-  pub maybe_accept: Option<&'a str>,
-  pub maybe_etag: Option<&'a str>,
-  pub maybe_auth_token: Option<&'a AuthToken>,
-  pub maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
