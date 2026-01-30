@@ -616,6 +616,7 @@ fn url_to_local_sub_path<'a>(
       MediaType::Json => ".json",
       MediaType::Jsonc => ".jsonc",
       MediaType::Json5 => ".json5",
+      MediaType::Markdown => ".md",
       MediaType::Wasm => ".wasm",
       MediaType::SourceMap => ".js",
       MediaType::Html => ".html",
