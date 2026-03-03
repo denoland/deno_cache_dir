@@ -1,10 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright the Deno authors. MIT license.
 
 import { isAbsolute, join, resolve } from "@std/path";
 import { DiskCache } from "./disk_cache.ts";
 import { HttpCache } from "./http_cache.ts";
 import { assert } from "./util.ts";
-import { instantiate } from "./lib/deno_cache_dir.generated.js";
+import { resolve_deno_dir } from "./lib/deno_cache_dir_wasm.js";
 
 export class DenoDir {
   readonly root: string;
@@ -42,8 +42,7 @@ export class DenoDir {
     if (root) {
       return resolvePathOrUrl(root);
     } else {
-      const instance = instantiate();
-      return instance.resolve_deno_dir();
+      return resolve_deno_dir();
     }
   }
 }

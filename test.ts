@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright the Deno authors. MIT license.
 
 import { assertEquals } from "@std/assert";
 import { createGraph } from "@deno/graph";

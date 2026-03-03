@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright the Deno authors. MIT license.
 
 /**
  * A module which provides a TypeScript implementation of the Deno CLI's cache
