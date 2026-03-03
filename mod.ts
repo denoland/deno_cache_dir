@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright the Deno authors. MIT license.
 
 /**
  * A module which provides a TypeScript implementation of the Deno CLI's cache
@@ -98,12 +98,10 @@ export function createCache({
 }: CacheOptions = {}): Loader {
   const denoDir = new DenoDir(root);
   const fileFetcher = new FileFetcher(
-    () => {
-      return denoDir.createHttpCache({
-        readOnly,
-        vendorRoot,
-      });
-    },
+    denoDir.createHttpCache({
+      readOnly,
+      vendorRoot,
+    }),
     cacheSetting,
     allowRemote,
   );

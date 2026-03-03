@@ -3,56 +3,23 @@ name: ci
 on: [push, pull_request]
 
 jobs:
-  rust:
-    name: deno_cache_dir-${{ matrix.os }}
-    if: |
-      github.event_name == 'push' ||
-      !startsWith(github.event.pull_request.head.label, 'denoland:')
+  deno:
+    name: deno_cache_dir ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       matrix:
         os: [macOS-latest, ubuntu-latest, windows-latest]
-
-    steps:
-      - name: Clone repository
-        uses: actions/checkout@v5
-
-      - name: Install rust
-        uses: dsherret/rust-toolchain-file@v1
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Format
-        if: contains(matrix.os, 'ubuntu')
-        run: cargo fmt --check
-
-      - name: Clippy
-        if: contains(matrix.os, 'ubuntu')
-        run: cargo clippy
-
-      - name: Build (sync)
-        run: cargo build --features sync
-
-      - name: Test
-        run: cargo test
-
-  deno:
-    name: deno_cache_dir-deno
     if: |
       github.event_name == 'push' ||
       !startsWith(github.event.pull_request.head.label, 'denoland:')
-    runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
-    timeout-minutes: 30
 
     steps:
       - name: Clone repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Install rust
         uses: dsherret/rust-toolchain-file@v1
       - uses: Swatinem/rust-cache@v2
@@ -62,15 +29,20 @@ jobs:
         uses: denoland/setup-deno@v2
         with:
           deno-version: canary
+      - name: Install wasm32-unknown-unknown
+        run: rustup target add wasm32-unknown-unknown
 
       - name: Format
-        run: deno fmt --check
+        if: contains(matrix.os, 'ubuntu')
+        run: cargo fmt --check && deno fmt --check
+      - name: Clippy
+        if: contains(matrix.os, 'ubuntu')
+        run: cargo clippy --target=wasm32-unknown-unknown && deno lint
       - name: Build
         run: deno task build
-      - name: Lint
-        run: deno lint
       - name: Test
         run: deno task test
 
       - name: Publish JSR
+        if: contains(matrix.os, 'ubuntu')
         run: deno run -A jsr:@david/publish-on-tag@0.1.3

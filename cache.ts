@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright the Deno authors. MIT license.
 
 import type { LoadResponse } from "@deno/graph";
 import type { CacheSetting, FileFetcher } from "./file_fetcher.ts";

@@ -1,6 +1,6 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright the Deno authors. MIT license.
 
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertThrows } from "@std/assert";
 import { DiskCache } from "./disk_cache.ts";
 
 Deno.test({
@@ -28,15 +28,15 @@ Deno.test({
 
     for (const [fixture, expected] of testCases) {
       if (expected instanceof Error) {
-        await assertRejects(
-          async () => await DiskCache.getCacheFilename(new URL(fixture)),
+        await assertThrows(
+          () => DiskCache.getCacheFilename(new URL(fixture)),
           Error,
           expected.message,
         );
         continue;
       } else {
         assertEquals(
-          await DiskCache.getCacheFilename(new URL(fixture)),
+          DiskCache.getCacheFilename(new URL(fixture)),
           expected,
         );
       }

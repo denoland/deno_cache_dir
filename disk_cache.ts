@@ -1,10 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright the Deno authors. MIT license.
 
 import { ensureDir } from "@std/fs/ensure-dir";
 import { dirname, isAbsolute, join } from "@std/path";
 import { readAll, writeAll } from "@std/io";
 import { assert, CACHE_PERM } from "./util.ts";
-import { instantiate } from "./lib/deno_cache_dir.generated.js";
+import { url_to_filename } from "./lib/deno_cache_dir_wasm.js";
 
 export class DiskCache {
   location: string;
@@ -35,8 +35,7 @@ export class DiskCache {
     file.close();
   }
 
-  static async getCacheFilename(url: URL): Promise<string> {
-    const { url_to_filename } = await instantiate();
+  static getCacheFilename(url: URL): string {
     return url_to_filename(url.toString());
   }
 }

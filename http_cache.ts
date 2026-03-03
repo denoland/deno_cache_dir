@@ -1,12 +1,8 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright the Deno authors. MIT license.
 
 import { isAbsolute } from "@std/path";
 import { assert } from "./util.ts";
-import {
-  type GlobalHttpCache,
-  instantiate,
-  type LocalHttpCache,
-} from "./lib/deno_cache_dir.generated.js";
+import { GlobalHttpCache, LocalHttpCache } from "./lib/deno_cache_dir_wasm.js";
 
 export interface HttpCacheCreateOptions {
   root: string;
@@ -38,7 +34,7 @@ export class HttpCache implements Disposable {
     this.#readOnly = readOnly;
   }
 
-  static async create(options: HttpCacheCreateOptions): Promise<HttpCache> {
+  static create(options: HttpCacheCreateOptions): HttpCache {
     assert(isAbsolute(options.root), "Root must be an absolute path.");
 
     if (options.vendorRoot != null) {
@@ -47,8 +43,6 @@ export class HttpCache implements Disposable {
         "Vendor root must be an absolute path.",
       );
     }
-    const { GlobalHttpCache, LocalHttpCache } = await instantiate();
-
     let cache: LocalHttpCache | GlobalHttpCache;
     if (options.vendorRoot != null) {
       cache = LocalHttpCache.new(

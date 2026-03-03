@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright the Deno authors. MIT license.
 
 import { AuthTokens } from "./auth_tokens.ts";
 import { fromFileUrl } from "@std/path";
@@ -116,12 +116,10 @@ export class FileFetcher {
   #authTokens: AuthTokens;
   #cache = new Map<string, LoadResponse>();
   #cacheSetting: CacheSetting;
-  #httpCache: HttpCache | undefined;
-  #httpCachePromise: Promise<HttpCache> | undefined;
-  #httpCacheFactory: () => Promise<HttpCache>;
+  #httpCache: HttpCache;
 
   constructor(
-    httpCacheFactory: () => Promise<HttpCache>,
+    httpCache: HttpCache,
     cacheSetting: CacheSetting = "use",
     allowRemote = true,
   ) {
@@ -129,7 +127,7 @@ export class FileFetcher {
     this.#authTokens = new AuthTokens(Deno.env.get("DENO_AUTH_TOKENS"));
     this.#allowRemote = allowRemote;
     this.#cacheSetting = cacheSetting;
-    this.#httpCacheFactory = httpCacheFactory;
+    this.#httpCache = httpCache;
   }
 
   async #fetchBlobDataUrl(
@@ -300,7 +298,7 @@ export class FileFetcher {
       const response = await this.#fetchBlobDataUrl(
         specifier,
         this.#resolveOptions(options),
-        await this.#resolveHttpCache(),
+        this.#httpCache,
       );
       await this.#cache.set(specifier.toString(), response);
       return response;
@@ -312,7 +310,7 @@ export class FileFetcher {
       const response = await this.#fetchRemoteOnce(
         specifier,
         this.#resolveOptions(options),
-        await this.#resolveHttpCache(),
+        this.#httpCache,
       );
       if (response) {
         await this.#cache.set(specifier.toString(), response);
@@ -325,20 +323,6 @@ export class FileFetcher {
     options ??= {};
     options.cacheSetting = options.cacheSetting ?? this.#cacheSetting;
     return options as ResolvedFetchOptions;
-  }
-
-  #resolveHttpCache(): Promise<HttpCache> {
-    if (this.#httpCache != null) {
-      return Promise.resolve(this.#httpCache);
-    }
-    if (!this.#httpCachePromise) {
-      this.#httpCachePromise = this.#httpCacheFactory().then((cache) => {
-        this.#httpCache = cache;
-        this.#httpCachePromise = undefined;
-        return cache;
-      });
-    }
-    return this.#httpCachePromise;
   }
 }
 

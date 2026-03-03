@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright the Deno authors. MIT license.
 
 import { AuthTokens } from "./auth_tokens.ts";
 import { assertEquals } from "@std/assert";
