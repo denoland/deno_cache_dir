@@ -29,6 +29,8 @@ jobs:
         uses: denoland/setup-deno@v2
         with:
           deno-version: canary
+      - name: Install wasm32-unknown-unknown
+        run: rustup target add wasm32-unknown-unknown
 
       - name: Format
         if: contains(matrix.os, 'ubuntu')
