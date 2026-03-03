@@ -26,7 +26,7 @@ export class DenoDir {
 
   createHttpCache(
     options?: { vendorRoot?: string | URL; readOnly?: boolean },
-  ): Promise<HttpCache> {
+  ): HttpCache {
     return HttpCache.create({
       root: join(this.root, "remote"),
       vendorRoot: options?.vendorRoot == null

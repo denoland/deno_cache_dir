@@ -2,10 +2,7 @@
 
 import { isAbsolute } from "@std/path";
 import { assert } from "./util.ts";
-import {
-  GlobalHttpCache,
-  LocalHttpCache,
-} from "./lib/deno_cache_dir_wasm.js";
+import { GlobalHttpCache, LocalHttpCache } from "./lib/deno_cache_dir_wasm.js";
 
 export interface HttpCacheCreateOptions {
   root: string;
@@ -37,7 +34,7 @@ export class HttpCache implements Disposable {
     this.#readOnly = readOnly;
   }
 
-  static async create(options: HttpCacheCreateOptions): Promise<HttpCache> {
+  static create(options: HttpCacheCreateOptions): HttpCache {
     assert(isAbsolute(options.root), "Root must be an absolute path.");
 
     if (options.vendorRoot != null) {

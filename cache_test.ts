@@ -12,9 +12,7 @@ async function setup() {
   });
   const denoDir = new DenoDir(tempdir);
   const fileFetcher = new FileFetcher(
-    () => {
-      return denoDir.createHttpCache();
-    },
+    denoDir.createHttpCache(),
     "use",
     true,
   );

@@ -15,12 +15,12 @@ use sys_traits::impls::wasm_string_to_path;
 use url::Url;
 use wasm_bindgen::prelude::*;
 
+use deno_cache_dir::CacheEntry;
 use deno_cache_dir::CacheReadFileError;
 use deno_cache_dir::Checksum;
-use deno_cache_dir::HttpCache;
-use deno_cache_dir::CacheEntry;
 use deno_cache_dir::GlobalToLocalCopy;
 use deno_cache_dir::HeadersMap;
+use deno_cache_dir::HttpCache;
 
 #[wasm_bindgen]
 pub fn url_to_filename(url: &str) -> Result<String, JsValue> {
