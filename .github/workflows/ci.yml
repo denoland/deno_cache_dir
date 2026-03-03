@@ -35,7 +35,7 @@ jobs:
         run: cargo fmt --check && deno fmt --check
       - name: Clippy
         if: contains(matrix.os, 'ubuntu')
-        run: cargo clippy && deno lint
+        run: cargo clippy --target=wasm32-unknown-unknown && deno lint
       - name: Build
         run: deno task build
       - name: Test
